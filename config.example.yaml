@@ -1,0 +1,29 @@
+iran_dns: "IRAN_DNS_IP"
+global_dns: "GLOBAL_DNS_IP"
+listen: ":53"
+min_ttl: 300
+max_ttl: 3600
+iran_ranges: "data/iran-ranges.txt"
+learned: "data/learned.conf"
+timeout: 3
+log_level: "info"
+log_format: "json"
+log_file: "/var/log/sentrydns/sentrydns.log"
+
+iran_tlds:
+  - "ir"
+  - "ایران"
+
+hijack_ips:
+  - "10.10.34.34"
+  - "10.10.34.35"
+  - "10.10.34.36"
+
+hijack_ranges:
+  - "50.7.0.0/16"
+
+prefer_iran_domains:
+  - "google.com"
+
+iran_ranges_url: "http://example.com/ranges.txt"
+iran_ranges_update_interval: 24h

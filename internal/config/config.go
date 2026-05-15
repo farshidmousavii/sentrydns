@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"io"
 	"os"
 
@@ -62,5 +63,39 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	return &cfg, nil
+	return &cfg, cfg.Validate()
+}
+
+func (c *Config) Validate() error {
+	if c.IranDNS == "" {
+		return errors.New("iran_dns is required")
+	}
+	if c.GlobalDNS == "" {
+		return errors.New("global_dns is required")
+	}
+	if c.Listen == "" {
+		return errors.New("listen is required")
+	}
+	if c.IranRanges == "" {
+		return errors.New("iran_ranges is required")
+	}
+	if c.Learned == "" {
+		return errors.New("learned is required")
+	}
+	if c.MetricsAddr == "" {
+		return errors.New("metrics_addr is required")
+	}
+	if c.MinTTL <= 0 {
+		return errors.New("min_ttl must be positive")
+	}
+	if c.MaxTTL <= 0 {
+		return errors.New("max_ttl must be positive")
+	}
+	if c.MinTTL > c.MaxTTL {
+		return errors.New("min_ttl must not exceed max_ttl")
+	}
+	if c.Timeout <= 0 {
+		return errors.New("timeout must be positive")
+	}
+	return nil
 }

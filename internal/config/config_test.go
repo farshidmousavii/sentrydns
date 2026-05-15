@@ -22,7 +22,11 @@ func writeConfig(t *testing.T, content string) string {
 }
 
 func TestLoadDefaults(t *testing.T) {
-	path := writeConfig(t, "")
+	yaml := `
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
+`
+	path := writeConfig(t, yaml)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +84,8 @@ func TestLoadPartialConfig(t *testing.T) {
 listen: ":9999"
 min_ttl: 600
 timeout: 5
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
 `
 	path := writeConfig(t, yaml)
 	cfg, err := Load(path)
@@ -155,5 +161,49 @@ func TestLoadMissingFile(t *testing.T) {
 	_, err := Load("/nonexistent/config.yaml")
 	if err == nil {
 		t.Error("expected error for missing file")
+	}
+}
+
+func TestValidateMissingIranDNS(t *testing.T) {
+	yaml := `
+global_dns: "8.8.8.8"
+listen: ":53"
+iran_ranges: "data/iran-ranges.txt"
+learned: "data/learned.conf"
+metrics_addr: ":9153"
+`
+	path := writeConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected validation error for missing iran_dns")
+	}
+}
+
+func TestValidateMissingGlobalDNS(t *testing.T) {
+	yaml := `
+iran_dns: "10.0.0.1"
+listen: ":53"
+iran_ranges: "data/iran-ranges.txt"
+learned: "data/learned.conf"
+metrics_addr: ":9153"
+`
+	path := writeConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected validation error for missing global_dns")
+	}
+}
+
+func TestValidateInvalidTTL(t *testing.T) {
+	yaml := `
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
+min_ttl: 600
+max_ttl: 300
+`
+	path := writeConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected validation error for min_ttl > max_ttl")
 	}
 }

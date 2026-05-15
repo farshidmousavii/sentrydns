@@ -2,6 +2,7 @@ package cache
 
 import (
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -88,7 +89,7 @@ func makeKey(req *dns.Msg) string {
 		return ""
 	}
 	q := req.Question[0]
-	return q.Name + ":" + dns.TypeToString[q.Qtype]
+	return strings.ToLower(q.Name) + ":" + dns.TypeToString[q.Qtype]
 }
 
 func minTTL(msg *dns.Msg) uint32 {

@@ -1,5 +1,4 @@
-dns-balancer
+sentrydns
 *.log
 config.yaml
-data/cache.json
 data/learned.conf

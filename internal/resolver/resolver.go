@@ -333,8 +333,11 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 func extractIPs(msg *dns.Msg) []string {
 	var ips []string
 	for _, ans := range msg.Answer {
-		if a, ok := ans.(*dns.A); ok {
-			ips = append(ips, a.A.String())
+		switch v := ans.(type) {
+		case *dns.A:
+			ips = append(ips, v.A.String())
+		case *dns.AAAA:
+			ips = append(ips, v.AAAA.String())
 		}
 	}
 	return ips

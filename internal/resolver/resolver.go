@@ -219,7 +219,7 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 			base := time.Duration(r.timeout.Load()) / 15
 			sleep := base + time.Duration(rand.Int63n(int64(base/2+1)))
 			time.Sleep(sleep)
-			r.metrics.QueriesServfail.Add(1)
+			r.metrics.QueriesRetried.Add(1)
 			resp = r.resolve(req, domain)
 		}
 

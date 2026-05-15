@@ -13,7 +13,7 @@ type response struct {
 	QueriesTotal      int64  `json:"queries_total"`
 	QueriesIran       int64  `json:"queries_iran"`
 	QueriesGlobal     int64  `json:"queries_global"`
-	QueriesServfail   int64  `json:"queries_servfail"`
+	QueriesRetried    int64  `json:"queries_retried"`
 	QueriesCached     int64  `json:"queries_cached"`
 	CacheMiss         int64  `json:"cache_miss"`
 	CacheHitRatio     string `json:"cache_hit_ratio"`
@@ -69,7 +69,7 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			QueriesTotal:      total,
 			QueriesIran:       m.QueriesIran.Load(),
 			QueriesGlobal:     m.QueriesGlobal.Load(),
-			QueriesServfail:   m.QueriesServfail.Load(),
+			QueriesRetried:    m.QueriesRetried.Load(),
 			QueriesCached:     cached,
 			CacheMiss:         m.CacheMiss.Load(),
 			CacheHitRatio:     hitRatio,

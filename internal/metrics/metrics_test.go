@@ -28,7 +28,7 @@ func TestQueryCounters(t *testing.T) {
 	m.QueriesTotal.Add(10)
 	m.QueriesIran.Add(4)
 	m.QueriesGlobal.Add(5)
-	m.QueriesServfail.Add(1)
+	m.QueriesRetried.Add(1)
 	m.QueriesCached.Add(3)
 	m.CacheMiss.Add(7)
 
@@ -41,8 +41,8 @@ func TestQueryCounters(t *testing.T) {
 	if m.QueriesGlobal.Load() != 5 {
 		t.Errorf("QueriesGlobal = %d, want 5", m.QueriesGlobal.Load())
 	}
-	if m.QueriesServfail.Load() != 1 {
-		t.Errorf("QueriesServfail = %d, want 1", m.QueriesServfail.Load())
+	if m.QueriesRetried.Load() != 1 {
+		t.Errorf("QueriesRetried = %d, want 1", m.QueriesRetried.Load())
 	}
 	if m.QueriesCached.Load() != 3 {
 		t.Errorf("QueriesCached = %d, want 3", m.QueriesCached.Load())
@@ -196,7 +196,7 @@ func TestMetricsHandler(t *testing.T) {
 	m.QueriesTotal.Store(42)
 	m.QueriesIran.Store(20)
 	m.QueriesGlobal.Store(20)
-	m.QueriesServfail.Store(2)
+	m.QueriesRetried.Store(2)
 	m.QueriesCached.Store(10)
 	m.CacheMiss.Store(32)
 	m.LearnedTotal.Store(500)
@@ -245,7 +245,7 @@ func TestMetricsHandler(t *testing.T) {
 		{"queries_total", 42},
 		{"queries_iran", 20},
 		{"queries_global", 20},
-		{"queries_servfail", 2},
+		{"queries_retried", 2},
 		{"queries_cached", 10},
 		{"cache_miss", 32},
 		{"learned_total", 500},

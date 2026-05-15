@@ -149,10 +149,12 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 			}
 		}
 
+		waitTimer := time.NewTimer(shortWait)
 		select {
 		case msg := <-globalCh:
+			waitTimer.Stop()
 			globalMsg = msg
-		case <-time.After(shortWait):
+		case <-waitTimer.C:
 		}
 
 		if globalMsg != nil {
@@ -165,8 +167,10 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 	}
 
 	if globalMsg != nil {
+		waitTimer := time.NewTimer(shortWait)
 		select {
 		case msg := <-iranCh:
+			waitTimer.Stop()
 			iranMsg = msg
 			if iranMsg != nil {
 				ips := extractIPs(iranMsg)
@@ -180,7 +184,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 					}
 				}
 			}
-		case <-time.After(shortWait):
+		case <-waitTimer.C:
 		}
 		r.log.Info("routed", "domain", domain, "upstream", "global")
 		return globalMsg

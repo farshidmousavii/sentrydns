@@ -12,7 +12,7 @@ REMOTE_DIR="/tmp/sentrydns-deploy"
 PORT="${DNS_PORT:-53}"
 
 echo "==> Building..."
-GOOS=linux GOARCH=amd64 go build -o sentrydns cmd/balancer/main.go
+GOOS=linux GOARCH=amd64 go build -o sentrydns cmd/sentrydns/main.go
 
 echo "==> Copying files to server..."
 ssh $SERVER "mkdir -p $REMOTE_DIR/data $REMOTE_DIR/scripts"

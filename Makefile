@@ -6,7 +6,7 @@ SERVER?=user@server-ip
 .PHONY: build install uninstall start stop status logs clean deploy deploy-binary download-ranges download-domains
 
 build:
-	GOOS=linux GOARCH=amd64 go build -o $(BINARY) cmd/balancer/main.go
+	GOOS=linux GOARCH=amd64 go build -o $(BINARY) cmd/sentrydns/main.go
 
 install: build
 	sudo bash scripts/install.sh

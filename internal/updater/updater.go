@@ -114,6 +114,7 @@ func (u *Updater) update() {
 	f, err := os.Create(tmp)
 	if err != nil {
 		u.log.Error("failed to create temp file", "error", err)
+		u.setUpdateSuccess(false)
 		return
 	}
 

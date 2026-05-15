@@ -80,7 +80,14 @@ func (u *Updater) scheduleFromMtime() time.Duration {
 
 	mtime := fi.ModTime()
 	u.metrics.LastUpdateTime.Store(mtime)
+
 	u.metrics.LastUpdateSuccess.Store(true)
+	if u.statePath != "" {
+		if _, err := os.Stat(u.statePath); err == nil {
+			st := state.Load(u.statePath)
+			u.metrics.LastUpdateSuccess.Store(st.LastUpdateSuccess)
+		}
+	}
 
 	elapsed := time.Since(mtime)
 	if elapsed >= u.interval {

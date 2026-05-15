@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/classifier"
@@ -117,31 +118,32 @@ func (u *Updater) update() {
 		return
 	}
 
-	tmp := u.filePath + ".tmp"
-	f, err := os.Create(tmp)
+	tmpPattern := filepath.Base(u.filePath) + "-*.tmp"
+	tmp, err := os.CreateTemp(filepath.Dir(u.filePath), tmpPattern)
 	if err != nil {
 		u.log.Error("failed to create temp file", "error", err)
 		u.setUpdateSuccess(false)
 		return
 	}
+	tmpPath := tmp.Name()
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
-		os.Remove(tmp)
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
 		u.log.Error("failed to write temp file", "error", err)
 		u.setUpdateSuccess(false)
 		return
 	}
-	f.Close()
+	tmp.Close()
 
-	if !containsValidCIDR(tmp) {
-		os.Remove(tmp)
+	if !containsValidCIDR(tmpPath) {
+		os.Remove(tmpPath)
 		u.log.Error("downloaded file contains no valid CIDR ranges")
 		u.setUpdateSuccess(false)
 		return
 	}
 
-	if err := os.Rename(tmp, u.filePath); err != nil {
+	if err := os.Rename(tmpPath, u.filePath); err != nil {
 		u.log.Error("failed to replace file", "error", err)
 		u.setUpdateSuccess(false)
 		return

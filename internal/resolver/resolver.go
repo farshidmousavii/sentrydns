@@ -295,16 +295,18 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 
 	isIran := upstream == r.iranDNS
 	if isIran {
-		r.metrics.IranLatencyTotal.Add(int64(elapsed))
 		r.metrics.IranQueryCount.Add(1)
 		if err != nil {
 			r.metrics.IranTimeouts.Add(1)
+		} else {
+			r.metrics.IranLatencyTotal.Add(int64(elapsed))
 		}
 	} else {
-		r.metrics.GlobalLatencyTotal.Add(int64(elapsed))
 		r.metrics.GlobalQueryCount.Add(1)
 		if err != nil {
 			r.metrics.GlobalTimeouts.Add(1)
+		} else {
+			r.metrics.GlobalLatencyTotal.Add(int64(elapsed))
 		}
 	}
 
@@ -327,18 +329,21 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 }
 
 func (r *Resolver) ValidateDomain(domain string) bool {
-	var nxdomain bool
-	for _, qtype := range []uint16{dns.TypeA, dns.TypeAAAA} {
-		req := new(dns.Msg)
-		req.SetQuestion(dns.Fqdn(domain), qtype)
-		resp := r.query(req, r.iranDNS)
-		if resp != nil && resp.Rcode == dns.RcodeNameError {
-			nxdomain = true
-			continue
-		}
-		return true
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	resp := r.query(req, r.iranDNS)
+	if resp == nil {
+		return false
 	}
-	return !nxdomain
+	return resp.Rcode != dns.RcodeNameError
+}
+
+func (r *Resolver) IranDNSHealthy() bool {
+	req := new(dns.Msg)
+	req.SetQuestion("google.com.", dns.TypeA)
+	c := &dns.Client{Timeout: 2 * time.Second}
+	resp, _, err := c.Exchange(req, r.iranDNS)
+	return err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess
 }
 
 func extractIPs(msg *dns.Msg) []string {

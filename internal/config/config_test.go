@@ -70,6 +70,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.MetricsAddr != ":9153" {
 		t.Errorf("MetricsAddr = %q, want %q", cfg.MetricsAddr, ":9153")
 	}
+	if cfg.StateFile != "data/.sentrydns-state" {
+		t.Errorf("StateFile = %q, want %q", cfg.StateFile, "data/.sentrydns-state")
+	}
 }
 
 func TestLoadPartialConfig(t *testing.T) {

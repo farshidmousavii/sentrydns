@@ -16,7 +16,7 @@ func TestStore(t *testing.T) {
 
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New()
-	s, err := New(f.Name(), discardLog, m)
+	s, err := New(f.Name(), discardLog, m, "")
 	if err != nil {
 		t.Fatal(err)
 	}

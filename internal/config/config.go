@@ -26,6 +26,7 @@ type Config struct {
 	PreferIranDomains        []string `yaml:"prefer_iran_domains"`
 	IranRangesURL            string   `yaml:"iran_ranges_url"`
 	IranRangesUpdateInterval string   `yaml:"iran_ranges_update_interval"`
+	StateFile                string   `yaml:"state_file"`
 }
 
 func defaultConfig() Config {
@@ -45,6 +46,7 @@ func defaultConfig() Config {
 		HijackRanges:             []string{"50.7.0.0/16"},
 		IranRangesURL:            "https://raw.githubusercontent.com/farshidmousavii/iran-ip/main/ipv4.txt",
 		IranRangesUpdateInterval: "24h",
+		StateFile:                "data/.sentrydns-state",
 	}
 }
 

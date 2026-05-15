@@ -52,12 +52,14 @@ func main() {
 
 	m := metrics.New()
 
-	s, err := store.New(cfg.Learned, slog, m)
+	s, err := store.New(cfg.Learned, slog, m, cfg.StateFile)
 	if err != nil {
 		slog.Error("failed to load store", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("store loaded", "domains", s.Count())
+
+	m.RestoreFromFile(cfg.StateFile)
 
 	m.StartServer(cfg.MetricsAddr, func() int64 {
 		return int64(s.Count())
@@ -75,7 +77,7 @@ func main() {
 			slog.Warn("invalid update interval, using default 24h", "error", err)
 			interval = 24 * time.Hour
 		}
-		u = updater.New(cfg.IranRangesURL, cfg.IranRanges, interval, c, slog, m)
+		u = updater.New(cfg.IranRangesURL, cfg.IranRanges, interval, c, slog, m, cfg.StateFile)
 		u.Start()
 	}
 

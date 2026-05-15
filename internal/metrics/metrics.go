@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/farshidmousavii/sentrydns/internal/state"
 )
 
 type Metrics struct {
@@ -17,23 +19,23 @@ type Metrics struct {
 	LearnedToday    atomic.Int64
 
 	// routing path distribution
-	PathTLD       atomic.Int64
+	PathTLD        atomic.Int64
 	PathPreferIran atomic.Int64
-	PathStore     atomic.Int64
-	PathLearn     atomic.Int64
+	PathStore      atomic.Int64
+	PathLearn      atomic.Int64
 
 	// per-upstream latency & errors
-	IranLatencyTotal  atomic.Int64
-	IranQueryCount    atomic.Int64
-	IranTimeouts      atomic.Int64
+	IranLatencyTotal   atomic.Int64
+	IranQueryCount     atomic.Int64
+	IranTimeouts       atomic.Int64
 	GlobalLatencyTotal atomic.Int64
 	GlobalQueryCount   atomic.Int64
 	GlobalTimeouts     atomic.Int64
 	TcpFallbackCount   atomic.Int64
 
 	// store operations
-	StoreRemoved  atomic.Int64
-	StoreCleaned  atomic.Int64
+	StoreRemoved atomic.Int64
+	StoreCleaned atomic.Int64
 
 	// in-flight gauge
 	InFlightQueries atomic.Int64
@@ -45,6 +47,7 @@ type Metrics struct {
 	LastUpdateSuccess atomic.Bool
 
 	startTime time.Time
+	statePath string
 }
 
 func New() *Metrics {
@@ -56,11 +59,30 @@ func New() *Metrics {
 	return m
 }
 
+func (m *Metrics) RestoreFromFile(path string) {
+	m.statePath = path
+	st := state.Load(path)
+	if st.LearnedTodayDate == time.Now().Format("2006-01-02") {
+		m.LearnedToday.Store(st.LearnedTodayCount)
+		m.lastLearnedReset = time.Now()
+	}
+	if st.LastUpdateUnix > 0 {
+		m.LastUpdateTime.Store(time.Unix(st.LastUpdateUnix, 0))
+	}
+	m.LastUpdateSuccess.Store(st.LastUpdateSuccess)
+}
+
 func (m *Metrics) resetDailyStats() {
 	ticker := time.NewTicker(24 * time.Hour)
 	for range ticker.C {
 		m.LearnedToday.Store(0)
 		m.lastLearnedReset = time.Now()
+		if m.statePath != "" {
+			st := state.Load(m.statePath)
+			st.LearnedTodayDate = time.Now().Format("2006-01-02")
+			st.LearnedTodayCount = 0
+			state.Save(m.statePath, st)
+		}
 	}
 }
 

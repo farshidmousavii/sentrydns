@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/metrics"
+	"github.com/farshidmousavii/sentrydns/internal/state"
 )
 
 type Store struct {
@@ -18,16 +19,18 @@ type Store struct {
 	file        string
 	log         *slog.Logger
 	metrics     *metrics.Metrics
+	statePath   string
 	stopSorter  chan struct{}
 	stopCleanup chan struct{}
 }
 
-func New(file string, log *slog.Logger, m *metrics.Metrics) (*Store, error) {
+func New(file string, log *slog.Logger, m *metrics.Metrics, statePath string) (*Store, error) {
 	s := &Store{
 		domains:     make(map[string]bool),
 		file:        file,
 		log:         log,
 		metrics:     m,
+		statePath:   statePath,
 		stopSorter:  make(chan struct{}),
 		stopCleanup: make(chan struct{}),
 	}
@@ -69,6 +72,7 @@ func (s *Store) Add(domain string) {
 		s.metrics.LearnedToday.Add(1)
 	}
 	s.persist(domain)
+	s.saveLearnedToday()
 }
 
 func (s *Store) load() error {
@@ -168,7 +172,23 @@ func (s *Store) sort() {
 }
 
 func (s *Store) StartCleanup(interval time.Duration, validate func(domain string) bool) {
+	remaining := s.cleanupRemaining(interval)
+
 	go func() {
+		if remaining > 0 {
+			s.log.Info("cleanup deferred", "remaining", remaining.Round(time.Second))
+			timer := time.NewTimer(remaining)
+			select {
+			case <-timer.C:
+				s.cleanup(validate)
+			case <-s.stopCleanup:
+				timer.Stop()
+				return
+			}
+		} else {
+			s.cleanup(validate)
+		}
+
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -180,6 +200,40 @@ func (s *Store) StartCleanup(interval time.Duration, validate func(domain string
 			}
 		}
 	}()
+}
+
+func (s *Store) cleanupRemaining(interval time.Duration) time.Duration {
+	if s.statePath == "" {
+		return -1
+	}
+	st := state.Load(s.statePath)
+	if st.LastCleanupUnix == 0 {
+		return -1
+	}
+	elapsed := time.Since(time.Unix(st.LastCleanupUnix, 0))
+	if elapsed >= interval {
+		return -1
+	}
+	return interval - elapsed
+}
+
+func (s *Store) saveCleanupTime() {
+	if s.statePath == "" {
+		return
+	}
+	st := state.Load(s.statePath)
+	st.LastCleanupUnix = time.Now().Unix()
+	state.Save(s.statePath, st)
+}
+
+func (s *Store) saveLearnedToday() {
+	if s.statePath == "" || s.metrics == nil {
+		return
+	}
+	st := state.Load(s.statePath)
+	st.LearnedTodayDate = time.Now().Format("2006-01-02")
+	st.LearnedTodayCount = s.metrics.LearnedToday.Load()
+	state.Save(s.statePath, st)
 }
 
 func (s *Store) cleanup(validate func(domain string) bool) {
@@ -234,6 +288,7 @@ func (s *Store) cleanup(validate func(domain string) bool) {
 		"remaining", s.Count(),
 		"duration", time.Since(start).Round(time.Second).String(),
 	)
+	s.saveCleanupTime()
 }
 func (s *Store) Stop() {
 	select {

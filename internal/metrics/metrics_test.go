@@ -5,9 +5,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/farshidmousavii/sentrydns/internal/state"
 )
 
 func TestNew(t *testing.T) {
@@ -438,4 +441,73 @@ func TestLastUpdateNever(t *testing.T) {
 	if data["last_update_ago"] != "never" {
 		t.Errorf("last_update_ago = %v, want never", data["last_update_ago"])
 	}
+}
+
+func TestRestoreFromFile(t *testing.T) {
+	path := tempFile(t)
+	defer os.Remove(path)
+
+	// write a state file with today's date
+	today := time.Now().Format("2006-01-02")
+	state.Save(path, &state.State{
+		LastUpdateUnix:    1000,
+		LastUpdateSuccess: true,
+		LastCleanupUnix:   2000,
+		LearnedTodayDate:  today,
+		LearnedTodayCount: 42,
+	})
+
+	m := New()
+	m.RestoreFromFile(path)
+
+	if m.LearnedToday.Load() != 42 {
+		t.Errorf("LearnedToday = %d, want 42", m.LearnedToday.Load())
+	}
+	if !m.LastUpdateSuccess.Load() {
+		t.Error("LastUpdateSuccess should be true")
+	}
+	if v, ok := m.LastUpdateTime.Load().(time.Time); !ok || v.Unix() != 1000 {
+		t.Errorf("LastUpdateTime = %v, want unix 1000", v)
+	}
+}
+
+func TestRestoreFromFileWrongDate(t *testing.T) {
+	path := tempFile(t)
+	defer os.Remove(path)
+
+	// write a state file with YESTERDAY's date — should NOT restore
+	yesterday := time.Now().Add(-24 * time.Hour).Format("2006-01-02")
+	state.Save(path, &state.State{
+		LearnedTodayDate:  yesterday,
+		LearnedTodayCount: 99,
+	})
+
+	m := New()
+	m.RestoreFromFile(path)
+
+	if m.LearnedToday.Load() != 0 {
+		t.Errorf("LearnedToday = %d, want 0 (wrong date)", m.LearnedToday.Load())
+	}
+}
+
+func TestRestoreFromFileMissing(t *testing.T) {
+	m := New()
+	m.RestoreFromFile("/nonexistent/state.json")
+	// should not crash, defaults should be zero
+	if m.LearnedToday.Load() != 0 {
+		t.Errorf("LearnedToday = %d, want 0", m.LearnedToday.Load())
+	}
+	if m.LastUpdateSuccess.Load() {
+		t.Error("LastUpdateSuccess should be false")
+	}
+}
+
+func tempFile(t *testing.T) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "metrics-state-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return f.Name()
 }

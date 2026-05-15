@@ -95,7 +95,7 @@ func newTestResolver(t *testing.T, iranDNS, globalDNS string, iranTLDs, hijackIP
 	t.Cleanup(func() { os.Remove(f.Name()) })
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New()
-	s, _ := store.New(f.Name(), discardLog, m)
+	s, _ := store.New(f.Name(), discardLog, m, "")
 	r := New(c, s, iranDNS, globalDNS, discardLog, iranTLDs, hijackIPs, hijackRanges, preferIranDomains, minTTL, maxTTL, m)
 	r.SetTimeout(time.Second)
 	return r, s

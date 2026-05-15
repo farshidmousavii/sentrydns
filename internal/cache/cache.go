@@ -21,6 +21,7 @@ type Cache struct {
 	minTTL  uint32
 	maxTTL  uint32
 	stop    chan struct{}
+	once    sync.Once
 }
 
 func New(log *slog.Logger, minTTL, maxTTL uint32) *Cache {
@@ -126,5 +127,7 @@ func (c *Cache) cleanup() {
 }
 
 func (c *Cache) Stop() {
-	close(c.stop)
+	c.once.Do(func() {
+		close(c.stop)
+	})
 }

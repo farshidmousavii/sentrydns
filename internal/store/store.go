@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -137,15 +138,20 @@ func (s *Store) writeAll() {
 	}
 	slices.Sort(domains)
 
-	f, err := os.Create(s.file)
+	f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")
 	if err != nil {
 		return
 	}
+	tmpPath := f.Name()
+	defer os.Remove(tmpPath)
 	defer f.Close()
 
 	for _, d := range domains {
 		_, _ = f.WriteString(d + "\n")
 	}
+	f.Close()
+
+	os.Rename(tmpPath, s.file)
 }
 
 func (s *Store) StartCleanup(interval time.Duration, validate func(domain string) bool) {

@@ -279,7 +279,7 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 
 	addr := upstream
 	if _, _, err := net.SplitHostPort(upstream); err != nil {
-		addr = upstream + ":53"
+		addr = net.JoinHostPort(upstream, "53")
 	}
 
 	start := time.Now()

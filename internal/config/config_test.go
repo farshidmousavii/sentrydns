@@ -67,6 +67,9 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.PreferIranDomains) != 0 {
 		t.Errorf("PreferIranDomains = %v, want empty", cfg.PreferIranDomains)
 	}
+	if cfg.MetricsAddr != ":9153" {
+		t.Errorf("MetricsAddr = %q, want %q", cfg.MetricsAddr, ":9153")
+	}
 }
 
 func TestLoadPartialConfig(t *testing.T) {
@@ -120,6 +123,7 @@ prefer_iran_domains:
   - "example.com"
 iran_ranges_url: "http://example.com/ranges.txt"
 iran_ranges_update_interval: "12h"
+metrics_addr: ":9154"
 `
 	path := writeConfig(t, yaml)
 	cfg, err := Load(path)
@@ -138,6 +142,9 @@ iran_ranges_update_interval: "12h"
 	}
 	if cfg.IranRangesUpdateInterval != "12h" {
 		t.Errorf("IranRangesUpdateInterval = %q", cfg.IranRangesUpdateInterval)
+	}
+	if cfg.MetricsAddr != ":9154" {
+		t.Errorf("MetricsAddr = %q, want %q", cfg.MetricsAddr, ":9154")
 	}
 }
 

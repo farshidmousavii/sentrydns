@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/classifier"
+	"github.com/farshidmousavii/sentrydns/internal/metrics"
 	"github.com/farshidmousavii/sentrydns/internal/store"
 
 	"github.com/miekg/dns"
@@ -93,8 +94,9 @@ func newTestResolver(t *testing.T, iranDNS, globalDNS string, iranTLDs, hijackIP
 	f.Close()
 	t.Cleanup(func() { os.Remove(f.Name()) })
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s, _ := store.New(f.Name(), discardLog)
-	r := New(c, s, iranDNS, globalDNS, discardLog, iranTLDs, hijackIPs, hijackRanges, preferIranDomains, minTTL, maxTTL)
+	m := metrics.New()
+	s, _ := store.New(f.Name(), discardLog, m)
+	r := New(c, s, iranDNS, globalDNS, discardLog, iranTLDs, hijackIPs, hijackRanges, preferIranDomains, minTTL, maxTTL, m)
 	r.SetTimeout(time.Second)
 	return r, s
 }
@@ -121,7 +123,8 @@ func TestIranDomain(t *testing.T) {
 	}
 
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
-	r2 := New(r.classifier, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, uint32(minTTL), uint32(maxTTL))
+	m2 := metrics.New()
+	r2 := New(r.classifier, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, uint32(minTTL), uint32(maxTTL), m2)
 
 	resp = r2.Resolve(req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {

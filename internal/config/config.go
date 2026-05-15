@@ -19,6 +19,7 @@ type Config struct {
 	LogLevel                 string   `yaml:"log_level"`
 	LogFormat                string   `yaml:"log_format"`
 	LogFile                  string   `yaml:"log_file"`
+	MetricsAddr              string   `yaml:"metrics_addr"`
 	IranTLDs                 []string `yaml:"iran_tlds"`
 	HijackIPs                []string `yaml:"hijack_ips"`
 	HijackRanges             []string `yaml:"hijack_ranges"`
@@ -38,6 +39,7 @@ func defaultConfig() Config {
 		LogLevel:                 "info",
 		LogFormat:                "json",
 		LogFile:                  "/var/log/sentrydns/sentrydns.log",
+		MetricsAddr:              ":9153",
 		IranTLDs:                 []string{"ir", "ایران"},
 		HijackIPs:                []string{"10.10.34.34", "10.10.34.35", "10.10.34.36"},
 		HijackRanges:             []string{"50.7.0.0/16"},

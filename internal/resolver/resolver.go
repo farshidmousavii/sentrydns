@@ -9,6 +9,7 @@ import (
 
 	"github.com/farshidmousavii/sentrydns/internal/cache"
 	"github.com/farshidmousavii/sentrydns/internal/classifier"
+	"github.com/farshidmousavii/sentrydns/internal/metrics"
 	"github.com/farshidmousavii/sentrydns/internal/store"
 
 	"github.com/miekg/dns"
@@ -30,6 +31,7 @@ type Resolver struct {
 	globalDNS    string
 	timeout      atomic.Int64
 	log          *slog.Logger
+	metrics      *metrics.Metrics
 	iranTLDs     map[string]bool
 	hijackIPs    map[string]bool
 	hijackRanges []*net.IPNet
@@ -37,7 +39,7 @@ type Resolver struct {
 	sf           singleflight.Group
 }
 
-func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32) *Resolver {
+func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics) *Resolver {
 	tlds := make(map[string]bool)
 	for _, t := range iranTLDs {
 		tlds[strings.ToLower(t)] = true
@@ -68,6 +70,7 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		iranDNS:      iranDNS,
 		globalDNS:    globalDNS,
 		log:          log,
+		metrics:      m,
 		iranTLDs:     tlds,
 		hijackIPs:    hijacks,
 		hijackRanges: ranges,
@@ -135,6 +138,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 			for _, ip := range ips {
 				if r.classifier.IsIran(ip) {
 					r.store.Add(domain)
+					r.metrics.QueriesIran.Add(1)
 					r.log.Info("learned", "domain", domain, "ip", ip)
 					go func() { <-globalCh }()
 					return iranMsg
@@ -167,6 +171,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 					for _, ip := range ips {
 						if r.classifier.IsIran(ip) {
 							r.store.Add(domain)
+							r.metrics.QueriesGlobal.Add(1)
 							r.log.Info("learned", "domain", domain, "ip", ip)
 						}
 					}
@@ -177,15 +182,20 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 		r.log.Info("routed", "domain", domain, "upstream", "global")
 		return globalMsg
 	}
-
 	r.log.Warn("both upstreams failed", "domain", domain)
 	return ServerFail(req)
 }
 
 func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
+	r.metrics.InFlightQueries.Add(1)
+	defer r.metrics.InFlightQueries.Add(-1)
+
+	r.metrics.QueriesTotal.Add(1)
 	if cached := r.cache.Get(req); cached != nil {
+		r.metrics.QueriesCached.Add(1)
 		return cached
 	}
+	r.metrics.CacheMiss.Add(1)
 
 	domain := req.Question[0].Name
 	key := domain + ":" + dns.TypeToString[req.Question[0].Qtype]
@@ -195,6 +205,7 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 
 		if resp == nil || resp.Rcode == dns.RcodeServerFailure {
 			time.Sleep(time.Duration(r.timeout.Load()) / 15)
+			r.metrics.QueriesServfail.Add(1)
 			resp = r.resolve(req, domain)
 		}
 
@@ -212,36 +223,47 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 
 func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 	if r.isIranTLD(domain) {
+		r.metrics.PathTLD.Add(1)
 		resp := r.query(req, r.iranDNS)
 		if resp == nil || resp.Rcode != dns.RcodeSuccess {
+			r.metrics.QueriesGlobal.Add(1)
 			resp = r.query(req, r.globalDNS)
+			return resp
 		}
+		r.metrics.QueriesIran.Add(1)
 		return resp
 	}
 
 	if r.isPreferIran(domain) {
+		r.metrics.PathPreferIran.Add(1)
 		resp := r.query(req, r.iranDNS)
 		if resp != nil && resp.Rcode == dns.RcodeSuccess {
 			ips := extractIPs(resp)
 			if len(ips) > 0 && !r.isHijacked(ips) {
+				r.metrics.QueriesIran.Add(1)
 				r.log.Info("routed", "domain", domain, "upstream", "iran-preferred")
 				return resp
 			}
 		}
+		r.metrics.QueriesGlobal.Add(1)
 		return r.query(req, r.globalDNS)
 	}
 
 	if r.store.IsIran(domain) {
+		r.metrics.PathStore.Add(1)
 		resp := r.query(req, r.iranDNS)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
 			r.store.Remove(domain)
 			return r.resolveWithLearning(req, domain)
 		} else if resp == nil || resp.Rcode != dns.RcodeSuccess {
+			r.metrics.QueriesGlobal.Add(1)
 			return r.query(req, r.globalDNS)
 		}
+		r.metrics.QueriesIran.Add(1)
 		return resp
 	}
 
+	r.metrics.PathLearn.Add(1)
 	return r.resolveWithLearning(req, domain)
 }
 
@@ -253,12 +275,31 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 		addr = upstream + ":53"
 	}
 
+	start := time.Now()
 	resp, _, err := c.Exchange(req, addr)
+	elapsed := time.Since(start)
+
+	isIran := upstream == r.iranDNS
+	if isIran {
+		r.metrics.IranLatencyTotal.Add(int64(elapsed))
+		r.metrics.IranQueryCount.Add(1)
+		if err != nil {
+			r.metrics.IranTimeouts.Add(1)
+		}
+	} else {
+		r.metrics.GlobalLatencyTotal.Add(int64(elapsed))
+		r.metrics.GlobalQueryCount.Add(1)
+		if err != nil {
+			r.metrics.GlobalTimeouts.Add(1)
+		}
+	}
+
 	if err != nil {
 		return nil
 	}
 
 	if resp.Truncated {
+		r.metrics.TcpFallbackCount.Add(1)
 		tcpResp, _, err := (&dns.Client{
 			Timeout: time.Duration(r.timeout.Load()),
 			Net:     "tcp",

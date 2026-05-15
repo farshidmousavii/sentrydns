@@ -12,6 +12,7 @@ import (
 	"github.com/farshidmousavii/sentrydns/internal/classifier"
 	"github.com/farshidmousavii/sentrydns/internal/config"
 	"github.com/farshidmousavii/sentrydns/internal/logger"
+	"github.com/farshidmousavii/sentrydns/internal/metrics"
 	"github.com/farshidmousavii/sentrydns/internal/resolver"
 	"github.com/farshidmousavii/sentrydns/internal/store"
 	"github.com/farshidmousavii/sentrydns/internal/updater"
@@ -49,14 +50,21 @@ func main() {
 	}
 	slog.Info("classifier loaded")
 
-	s, err := store.New(cfg.Learned, slog)
+	m := metrics.New()
+
+	s, err := store.New(cfg.Learned, slog, m)
 	if err != nil {
 		slog.Error("failed to load store", "error", err)
 		os.Exit(1)
 	}
 	slog.Info("store loaded", "domains", s.Count())
 
-	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL))
+	m.StartServer(cfg.MetricsAddr, func() int64 {
+		return int64(s.Count())
+	})
+	slog.Info("metrics server started", "addr", cfg.MetricsAddr)
+
+	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m)
 
 	r.SetTimeout(time.Duration(cfg.Timeout) * time.Second)
 
@@ -67,7 +75,7 @@ func main() {
 			slog.Warn("invalid update interval, using default 24h", "error", err)
 			interval = 24 * time.Hour
 		}
-		u = updater.New(cfg.IranRangesURL, cfg.IranRanges, interval, c, slog)
+		u = updater.New(cfg.IranRangesURL, cfg.IranRanges, interval, c, slog, m)
 		u.Start()
 	}
 

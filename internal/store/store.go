@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/farshidmousavii/sentrydns/internal/metrics"
 )
 
 type Store struct {
@@ -15,15 +17,17 @@ type Store struct {
 	domains     map[string]bool
 	file        string
 	log         *slog.Logger
+	metrics     *metrics.Metrics
 	stopSorter  chan struct{}
 	stopCleanup chan struct{}
 }
 
-func New(file string, log *slog.Logger) (*Store, error) {
+func New(file string, log *slog.Logger, m *metrics.Metrics) (*Store, error) {
 	s := &Store{
 		domains:     make(map[string]bool),
 		file:        file,
 		log:         log,
+		metrics:     m,
 		stopSorter:  make(chan struct{}),
 		stopCleanup: make(chan struct{}),
 	}
@@ -60,6 +64,10 @@ func (s *Store) Add(domain string) {
 	}
 
 	s.domains[domain] = true
+	if s.metrics != nil {
+		s.metrics.LearnedTotal.Add(1)
+		s.metrics.LearnedToday.Add(1)
+	}
 	s.persist(domain)
 }
 
@@ -114,6 +122,9 @@ func (s *Store) Remove(domain string) {
 	}
 
 	delete(s.domains, domain)
+	if s.metrics != nil {
+		s.metrics.StoreRemoved.Add(1)
+	}
 	s.writeAll()
 }
 
@@ -210,6 +221,9 @@ func (s *Store) cleanup(validate func(domain string) bool) {
 			delete(s.domains, d)
 			removed++
 		}
+	}
+	if s.metrics != nil {
+		s.metrics.StoreCleaned.Add(int64(removed))
 	}
 	s.writeAll()
 	s.mu.Unlock()

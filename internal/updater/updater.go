@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/classifier"
+	"github.com/farshidmousavii/sentrydns/internal/metrics"
 )
 
 type Updater struct {
@@ -20,9 +21,10 @@ type Updater struct {
 	log        *slog.Logger
 	stop       chan struct{}
 	client     *http.Client
+	metrics    *metrics.Metrics
 }
 
-func New(url, filePath string, interval time.Duration, c *classifier.Classifier, log *slog.Logger) *Updater {
+func New(url, filePath string, interval time.Duration, c *classifier.Classifier, log *slog.Logger, m *metrics.Metrics) *Updater {
 	return &Updater{
 		url:        url,
 		filePath:   filePath,
@@ -31,6 +33,7 @@ func New(url, filePath string, interval time.Duration, c *classifier.Classifier,
 		log:        log,
 		stop:       make(chan struct{}),
 		client:     &http.Client{Timeout: 30 * time.Second},
+		metrics:    m,
 	}
 }
 
@@ -62,12 +65,14 @@ func (u *Updater) update() {
 	resp, err := u.client.Get(u.url)
 	if err != nil {
 		u.log.Error("failed to download iran-ranges", "error", err)
+		u.metrics.LastUpdateSuccess.Store(false)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		u.log.Error("bad response", "status", resp.StatusCode)
+		u.metrics.LastUpdateSuccess.Store(false)
 		return
 	}
 
@@ -82,6 +87,7 @@ func (u *Updater) update() {
 		f.Close()
 		os.Remove(tmp)
 		u.log.Error("failed to write temp file", "error", err)
+		u.metrics.LastUpdateSuccess.Store(false)
 		return
 	}
 	f.Close()
@@ -89,20 +95,25 @@ func (u *Updater) update() {
 	if !containsValidCIDR(tmp) {
 		os.Remove(tmp)
 		u.log.Error("downloaded file contains no valid CIDR ranges")
+		u.metrics.LastUpdateSuccess.Store(false)
 		return
 	}
 
 	if err := os.Rename(tmp, u.filePath); err != nil {
 		u.log.Error("failed to replace file", "error", err)
+		u.metrics.LastUpdateSuccess.Store(false)
 		return
 	}
 
 	if err := u.classifier.Reload(u.filePath); err != nil {
 		u.log.Error("failed to reload classifier", "error", err)
+		u.metrics.LastUpdateSuccess.Store(false)
 		return
 	}
 
 	u.log.Info("iran-ranges updated successfully")
+	u.metrics.LastUpdateTime.Store(time.Now())
+	u.metrics.LastUpdateSuccess.Store(true)
 }
 
 func containsValidCIDR(path string) bool {

@@ -9,6 +9,7 @@ timeout: 3
 log_level: "info"
 log_format: "json"
 log_file: "/var/log/sentrydns/sentrydns.log"
+metrics_addr: ":9153"
 
 iran_tlds:
   - "ir"

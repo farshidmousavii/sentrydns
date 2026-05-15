@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+
+	"github.com/farshidmousavii/sentrydns/internal/metrics"
 )
 
 func TestStore(t *testing.T) {
@@ -13,7 +15,8 @@ func TestStore(t *testing.T) {
 	defer os.Remove(f.Name())
 
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s, err := New(f.Name(), discardLog)
+	m := metrics.New()
+	s, err := New(f.Name(), discardLog, m)
 	if err != nil {
 		t.Fatal(err)
 	}

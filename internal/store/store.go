@@ -20,7 +20,6 @@ type Store struct {
 	log         *slog.Logger
 	metrics     *metrics.Metrics
 	statePath   string
-	stopSorter  chan struct{}
 	stopCleanup chan struct{}
 }
 
@@ -31,7 +30,6 @@ func New(file string, log *slog.Logger, m *metrics.Metrics, statePath string) (*
 		log:         log,
 		metrics:     m,
 		statePath:   statePath,
-		stopSorter:  make(chan struct{}),
 		stopCleanup: make(chan struct{}),
 	}
 
@@ -148,27 +146,6 @@ func (s *Store) writeAll() {
 	for _, d := range domains {
 		_, _ = f.WriteString(d + "\n")
 	}
-}
-
-func (s *Store) StartSorter(interval time.Duration) {
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				s.sort()
-			case <-s.stopSorter:
-				return
-			}
-		}
-	}()
-}
-
-func (s *Store) sort() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.writeAll()
 }
 
 func (s *Store) StartCleanup(interval time.Duration, validate func(domain string) bool) {
@@ -294,12 +271,8 @@ func (s *Store) cleanup(validate func(domain string) bool) {
 	)
 	s.saveCleanupTime()
 }
+
 func (s *Store) Stop() {
-	select {
-	case <-s.stopSorter:
-	default:
-		close(s.stopSorter)
-	}
 	select {
 	case <-s.stopCleanup:
 	default:

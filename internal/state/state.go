@@ -25,7 +25,9 @@ func Load(path string) *State {
 	if err != nil {
 		return s
 	}
-	json.Unmarshal(data, s)
+	if err := json.Unmarshal(data, s); err != nil {
+		return &State{}
+	}
 	return s
 }
 

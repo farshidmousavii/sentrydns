@@ -28,6 +28,8 @@ type Config struct {
 	IranRangesURL            string   `yaml:"iran_ranges_url"`
 	IranRangesUpdateInterval string   `yaml:"iran_ranges_update_interval"`
 	StateFile                string   `yaml:"state_file"`
+	CleanupInitialDelay      string   `yaml:"cleanup_initial_delay"`
+	CleanupQPS               int      `yaml:"cleanup_qps"`
 }
 
 func defaultConfig() Config {
@@ -48,6 +50,8 @@ func defaultConfig() Config {
 		IranRangesURL:            "https://raw.githubusercontent.com/farshidmousavii/iran-ip/main/ipv4.txt",
 		IranRangesUpdateInterval: "24h",
 		StateFile:                "data/.sentrydns-state",
+		CleanupInitialDelay:      "1h",
+		CleanupQPS:               100,
 	}
 }
 
@@ -96,6 +100,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Timeout <= 0 {
 		return errors.New("timeout must be positive")
+	}
+	if c.CleanupQPS <= 0 {
+		return errors.New("cleanup_qps must be positive")
+	}
+	if c.CleanupInitialDelay == "" {
+		return errors.New("cleanup_initial_delay is required")
 	}
 	return nil
 }

@@ -29,3 +29,6 @@ prefer_iran_domains:
 iran_ranges_url: "http://example.com/ranges.txt"
 iran_ranges_update_interval: 24h
 state_file: "data/.sentrydns-state"
+
+cleanup_initial_delay: 1h
+cleanup_qps: 100

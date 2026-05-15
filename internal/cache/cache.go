@@ -41,22 +41,23 @@ func (c *Cache) Get(req *dns.Msg) *dns.Msg {
 	if key == "" {
 		return nil
 	}
+
 	c.mu.RLock()
 	e, ok := c.entries[key]
 	if ok && time.Now().After(e.expires) {
 		ok = false
 	}
+	if ok {
+		resp := e.msg.Copy()
+		resp.Id = req.Id
+		c.mu.RUnlock()
+		c.log.Debug("cache_hit", "key", key)
+		return resp
+	}
 	c.mu.RUnlock()
 
-	if !ok {
-		c.log.Debug("cache_miss", "key", key)
-		return nil
-	}
-
-	c.log.Debug("cache_hit", "key", key)
-	resp := e.msg.Copy()
-	resp.Id = req.Id
-	return resp
+	c.log.Debug("cache_miss", "key", key)
+	return nil
 }
 
 func (c *Cache) Set(req *dns.Msg, resp *dns.Msg) {

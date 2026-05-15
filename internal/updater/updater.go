@@ -159,22 +159,22 @@ func (u *Updater) update() {
 	u.metrics.LastUpdateTime.Store(time.Now())
 	u.metrics.LastUpdateSuccess.Store(true)
 	if u.statePath != "" {
-		st := state.Load(u.statePath)
-		st.LastUpdateUnix = time.Now().Unix()
-		st.LastUpdateSuccess = true
-		state.Save(u.statePath, st)
+		state.Update(u.statePath, func(st *state.State) {
+			st.LastUpdateUnix = time.Now().Unix()
+			st.LastUpdateSuccess = true
+		})
 	}
 }
 
 func (u *Updater) setUpdateSuccess(success bool) {
 	u.metrics.LastUpdateSuccess.Store(success)
 	if u.statePath != "" {
-		st := state.Load(u.statePath)
-		st.LastUpdateSuccess = success
-		if success {
-			st.LastUpdateUnix = time.Now().Unix()
-		}
-		state.Save(u.statePath, st)
+		state.Update(u.statePath, func(st *state.State) {
+			st.LastUpdateSuccess = success
+			if success {
+				st.LastUpdateUnix = time.Now().Unix()
+			}
+		})
 	}
 }
 

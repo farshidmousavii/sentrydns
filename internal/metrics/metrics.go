@@ -74,10 +74,10 @@ func (m *Metrics) resetDailyStats() {
 	for range ticker.C {
 		m.LearnedToday.Store(0)
 		if m.statePath != "" {
-			st := state.Load(m.statePath)
-			st.LearnedTodayDate = time.Now().Format("2006-01-02")
-			st.LearnedTodayCount = 0
-			state.Save(m.statePath, st)
+			state.Update(m.statePath, func(st *state.State) {
+				st.LearnedTodayDate = time.Now().Format("2006-01-02")
+				st.LearnedTodayCount = 0
+			})
 		}
 	}
 }

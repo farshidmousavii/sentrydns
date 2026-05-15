@@ -204,19 +204,19 @@ func (s *Store) saveCleanupTime() {
 	if s.statePath == "" {
 		return
 	}
-	st := state.Load(s.statePath)
-	st.LastCleanupUnix = time.Now().Unix()
-	state.Save(s.statePath, st)
+	state.Update(s.statePath, func(st *state.State) {
+		st.LastCleanupUnix = time.Now().Unix()
+	})
 }
 
 func (s *Store) saveLearnedToday() {
 	if s.statePath == "" || s.metrics == nil {
 		return
 	}
-	st := state.Load(s.statePath)
-	st.LearnedTodayDate = time.Now().Format("2006-01-02")
-	st.LearnedTodayCount = s.metrics.LearnedToday.Load()
-	state.Save(s.statePath, st)
+	state.Update(s.statePath, func(st *state.State) {
+		st.LearnedTodayDate = time.Now().Format("2006-01-02")
+		st.LearnedTodayCount = s.metrics.LearnedToday.Load()
+	})
 }
 
 func (s *Store) cleanup(validate func(domain string) bool) {

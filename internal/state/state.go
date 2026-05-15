@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 type State struct {
@@ -13,6 +14,8 @@ type State struct {
 	LearnedTodayDate  string `json:"learned_today_date"`
 	LearnedTodayCount int64  `json:"learned_today_count"`
 }
+
+var updateMu sync.Mutex
 
 func Load(path string) *State {
 	s := &State{}
@@ -43,4 +46,12 @@ func Save(path string, s *State) error {
 	}
 	tmp.Close()
 	return os.Rename(tmpPath, path)
+}
+
+func Update(path string, fn func(*State)) error {
+	updateMu.Lock()
+	defer updateMu.Unlock()
+	s := Load(path)
+	fn(s)
+	return Save(path, s)
 }

@@ -3,7 +3,7 @@ package state
 import (
 	"encoding/json"
 	"os"
-	"sync"
+	"path/filepath"
 )
 
 type State struct {
@@ -14,12 +14,7 @@ type State struct {
 	LearnedTodayCount int64  `json:"learned_today_count"`
 }
 
-var mu sync.Mutex
-
 func Load(path string) *State {
-	mu.Lock()
-	defer mu.Unlock()
-
 	s := &State{}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -32,16 +27,20 @@ func Load(path string) *State {
 }
 
 func Save(path string, s *State) error {
-	mu.Lock()
-	defer mu.Unlock()
-
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "state-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	tmp.Close()
+	return os.Rename(tmpPath, path)
 }

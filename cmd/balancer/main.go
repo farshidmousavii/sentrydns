@@ -103,7 +103,7 @@ func main() {
 
 		slog.Info("query",
 			"domain", domain,
-			"rcode", dns.RcodeToString[resp.Rcode],
+			"rcode", resp.Rcode,
 			"answers", len(resp.Answer),
 			"latency_ms", time.Since(start).Milliseconds(),
 		)

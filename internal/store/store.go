@@ -142,18 +142,24 @@ func (s *Store) writeAll() {
 
 	f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")
 	if err != nil {
+		s.log.Error("failed to create temp file for writeAll", "error", err)
 		return
 	}
 	tmpPath := f.Name()
 	defer os.Remove(tmpPath)
-	defer f.Close()
 
 	for _, d := range domains {
-		_, _ = f.WriteString(d + "\n")
+		if _, err := f.WriteString(d + "\n"); err != nil {
+			f.Close()
+			s.log.Error("failed to write temp file for writeAll", "error", err)
+			return
+		}
 	}
 	f.Close()
 
-	os.Rename(tmpPath, s.file)
+	if err := os.Rename(tmpPath, s.file); err != nil {
+		s.log.Error("failed to rename temp file for writeAll", "error", err)
+	}
 }
 
 func (s *Store) StartCleanup(interval time.Duration, validate func(domain string) bool) {

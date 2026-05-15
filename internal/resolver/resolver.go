@@ -313,14 +313,18 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 }
 
 func (r *Resolver) ValidateDomain(domain string) bool {
-	req := new(dns.Msg)
-	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
-
-	resp := r.query(req, r.iranDNS)
-	if resp == nil {
+	var nxdomain bool
+	for _, qtype := range []uint16{dns.TypeA, dns.TypeAAAA} {
+		req := new(dns.Msg)
+		req.SetQuestion(dns.Fqdn(domain), qtype)
+		resp := r.query(req, r.iranDNS)
+		if resp != nil && resp.Rcode == dns.RcodeNameError {
+			nxdomain = true
+			continue
+		}
 		return true
 	}
-	return resp.Rcode != dns.RcodeNameError
+	return !nxdomain
 }
 
 func extractIPs(msg *dns.Msg) []string {

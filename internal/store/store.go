@@ -58,14 +58,15 @@ func (s *Store) IsIran(domain string) bool {
 
 func (s *Store) Add(domain string) {
 	domain = normalize(domain)
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
+	s.mu.Lock()
 	if s.domains[domain] {
+		s.mu.Unlock()
 		return
 	}
-
 	s.domains[domain] = true
+	s.mu.Unlock()
+
 	if s.metrics != nil {
 		s.metrics.LearnedTotal.Add(1)
 		s.metrics.LearnedToday.Add(1)
@@ -118,13 +119,14 @@ func (s *Store) Count() int {
 func (s *Store) Remove(domain string) {
 	domain = normalize(domain)
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.domains[domain] {
+		s.mu.Unlock()
 		return
 	}
 
 	delete(s.domains, domain)
+	s.mu.Unlock()
+
 	if s.metrics != nil {
 		s.metrics.StoreRemoved.Add(1)
 	}
@@ -266,8 +268,9 @@ func (s *Store) cleanup(validate func(domain string) bool) {
 	if s.metrics != nil {
 		s.metrics.StoreCleaned.Add(int64(removed))
 	}
-	s.writeAll()
 	s.mu.Unlock()
+
+	s.writeAll()
 
 	s.log.Info("cleanup finished",
 		"total", total,

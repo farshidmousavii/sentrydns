@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/classifier"
@@ -23,6 +24,7 @@ type Updater struct {
 	classifier *classifier.Classifier
 	log        *slog.Logger
 	stop       chan struct{}
+	once       sync.Once
 	client     *http.Client
 	metrics    *metrics.Metrics
 }
@@ -98,7 +100,9 @@ func (u *Updater) scheduleFromMtime() time.Duration {
 }
 
 func (u *Updater) Stop() {
-	close(u.stop)
+	u.once.Do(func() {
+		close(u.stop)
+	})
 }
 
 func (u *Updater) update() {

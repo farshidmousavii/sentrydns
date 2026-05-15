@@ -87,6 +87,13 @@ func main() {
 	})
 
 	dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("panic in handler", "recover", rec)
+				w.WriteMsg(resolver.ServerFail(req))
+			}
+		}()
+
 		if len(req.Question) == 0 {
 			w.WriteMsg(resolver.ServerFail(req))
 			return

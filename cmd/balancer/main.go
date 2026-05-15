@@ -116,7 +116,6 @@ func main() {
 		slog.Info("udp server started", "addr", cfg.Listen)
 		if err := udpServer.ListenAndServe(); err != nil {
 			slog.Error("udp server error", "error", err)
-			os.Exit(1)
 		}
 	}()
 
@@ -124,7 +123,6 @@ func main() {
 		slog.Info("tcp server started", "addr", cfg.Listen)
 		if err := tcpServer.ListenAndServe(); err != nil {
 			slog.Error("tcp server error", "error", err)
-			os.Exit(1)
 		}
 	}()
 

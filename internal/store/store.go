@@ -248,24 +248,28 @@ func (s *Store) cleanup(validate func(domain string) bool) {
 	}
 	s.mu.RUnlock()
 
-	sem := make(chan struct{}, 100)
 	var mu sync.Mutex
 	var toRemove []string
 	var wg sync.WaitGroup
 
-	for _, d := range domains {
+	work := make(chan string, 100)
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
-		go func(domain string) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			if !validate(domain) {
-				mu.Lock()
-				toRemove = append(toRemove, domain)
-				mu.Unlock()
+			for domain := range work {
+				if !validate(domain) {
+					mu.Lock()
+					toRemove = append(toRemove, domain)
+					mu.Unlock()
+				}
 			}
-		}(d)
+		}()
 	}
+	for _, d := range domains {
+		work <- d
+	}
+	close(work)
 	wg.Wait()
 
 	s.mu.Lock()

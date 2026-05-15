@@ -140,7 +140,10 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 					r.store.Add(domain)
 					r.metrics.QueriesIran.Add(1)
 					r.log.Info("learned", "domain", domain, "ip", ip)
-					go func() { <-globalCh }()
+					select {
+					case <-globalCh:
+					default:
+					}
 					return iranMsg
 				}
 			}

@@ -106,12 +106,21 @@ func (m *Metrics) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (m *Metrics) StartServer(addr string, storeSize func() int64) {
+func (m *Metrics) StartServer(addr string, storeSize func() int64) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", m.MetricsHandler(storeSize))
 	mux.HandleFunc("/health", m.HealthHandler)
 
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	go func() {
-		http.ListenAndServe(addr, mux)
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			panic(err)
+		}
 	}()
+	return srv
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -61,7 +62,7 @@ func main() {
 
 	m.RestoreFromFile(cfg.StateFile)
 
-	m.StartServer(cfg.MetricsAddr, func() int64 {
+	metricsSrv := m.StartServer(cfg.MetricsAddr, func() int64 {
 		return int64(s.Count())
 	})
 	slog.Info("metrics server started", "addr", cfg.MetricsAddr)
@@ -135,6 +136,7 @@ func main() {
 
 	udpServer.Shutdown()
 	tcpServer.Shutdown()
+	metricsSrv.Shutdown(context.Background())
 
 	r.Stop()
 	s.Stop()

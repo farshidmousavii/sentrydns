@@ -82,9 +82,13 @@ func main() {
 		u.Start()
 	}
 
-	s.StartCleanup(24*time.Hour, func(domain string) bool {
-		return r.ValidateDomain(domain)
-	})
+	cleanupDelay, err := time.ParseDuration(cfg.CleanupInitialDelay)
+	if err != nil {
+		slog.Warn("invalid cleanup_initial_delay, using default 1h", "error", err)
+		cleanupDelay = 1 * time.Hour
+	}
+
+	s.StartCleanup(24*time.Hour, cleanupDelay, cfg.CleanupQPS, r.ValidateDomain, r.IranDNSHealthy)
 
 	dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
 		defer func() {

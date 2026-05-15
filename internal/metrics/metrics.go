@@ -40,8 +40,6 @@ type Metrics struct {
 	// in-flight gauge
 	InFlightQueries atomic.Int64
 
-	lastLearnedReset time.Time
-
 	// iran-ranges update
 	LastUpdateTime    atomic.Value // time.Time
 	LastUpdateSuccess atomic.Bool
@@ -52,8 +50,7 @@ type Metrics struct {
 
 func New() *Metrics {
 	m := &Metrics{
-		startTime:        time.Now(),
-		lastLearnedReset: time.Now(),
+		startTime: time.Now(),
 	}
 	go m.resetDailyStats()
 	return m
@@ -64,7 +61,6 @@ func (m *Metrics) RestoreFromFile(path string) {
 	st := state.Load(path)
 	if st.LearnedTodayDate == time.Now().Format("2006-01-02") {
 		m.LearnedToday.Store(st.LearnedTodayCount)
-		m.lastLearnedReset = time.Now()
 	}
 	if st.LastUpdateUnix > 0 {
 		m.LastUpdateTime.Store(time.Unix(st.LastUpdateUnix, 0))
@@ -77,7 +73,6 @@ func (m *Metrics) resetDailyStats() {
 	defer ticker.Stop()
 	for range ticker.C {
 		m.LearnedToday.Store(0)
-		m.lastLearnedReset = time.Now()
 		if m.statePath != "" {
 			st := state.Load(m.statePath)
 			st.LearnedTodayDate = time.Now().Format("2006-01-02")

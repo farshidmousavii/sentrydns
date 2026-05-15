@@ -74,6 +74,7 @@ func (m *Metrics) RestoreFromFile(path string) {
 
 func (m *Metrics) resetDailyStats() {
 	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
 	for range ticker.C {
 		m.LearnedToday.Store(0)
 		m.lastLearnedReset = time.Now()

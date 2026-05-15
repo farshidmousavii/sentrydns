@@ -162,22 +162,30 @@ func (s *Store) writeAll() {
 	}
 }
 
-func (s *Store) StartCleanup(interval time.Duration, validate func(domain string) bool) {
+func (s *Store) StartCleanup(interval, initialDelay time.Duration, qps int, validate func(string) bool, healthCheck func() bool) {
 	remaining := s.cleanupRemaining(interval)
 
 	go func() {
-		if remaining > 0 {
+		if remaining > 0 && remaining <= initialDelay {
 			s.log.Info("cleanup deferred", "remaining", remaining.Round(time.Second))
 			timer := time.NewTimer(remaining)
 			select {
 			case <-timer.C:
-				s.cleanup(validate)
+				s.cleanup(validate, qps, healthCheck)
 			case <-s.stopCleanup:
 				timer.Stop()
 				return
 			}
 		} else {
-			s.cleanup(validate)
+			s.log.Info("cleanup initial delay", "delay", initialDelay.Round(time.Second))
+			timer := time.NewTimer(initialDelay)
+			select {
+			case <-timer.C:
+				s.cleanup(validate, qps, healthCheck)
+			case <-s.stopCleanup:
+				timer.Stop()
+				return
+			}
 		}
 
 		ticker := time.NewTicker(interval)
@@ -185,7 +193,7 @@ func (s *Store) StartCleanup(interval time.Duration, validate func(domain string
 		for {
 			select {
 			case <-ticker.C:
-				s.cleanup(validate)
+				s.cleanup(validate, qps, healthCheck)
 			case <-s.stopCleanup:
 				return
 			}
@@ -227,7 +235,13 @@ func (s *Store) saveLearnedToday() {
 	})
 }
 
-func (s *Store) cleanup(validate func(domain string) bool) {
+func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck func() bool) {
+	if !healthCheck() {
+		s.log.Warn("cleanup skipped: IranDNS unavailable")
+		s.saveCleanupTime()
+		return
+	}
+
 	start := time.Now()
 	total := s.Count()
 	s.log.Info("cleanup started", "total", total)
@@ -244,11 +258,15 @@ func (s *Store) cleanup(validate func(domain string) bool) {
 	var wg sync.WaitGroup
 
 	work := make(chan string, 100)
+	limiter := time.NewTicker(time.Second / time.Duration(qps))
+	defer limiter.Stop()
+
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for domain := range work {
+				<-limiter.C
 				if !validate(domain) {
 					mu.Lock()
 					toRemove = append(toRemove, domain)

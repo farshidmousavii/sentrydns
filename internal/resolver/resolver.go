@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"log/slog"
+	"math/rand"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -215,7 +216,9 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 		resp := r.resolve(req, domain)
 
 		if resp == nil || resp.Rcode == dns.RcodeServerFailure {
-			time.Sleep(time.Duration(r.timeout.Load()) / 15)
+			base := time.Duration(r.timeout.Load()) / 15
+			sleep := base + time.Duration(rand.Int63n(int64(base/2+1)))
+			time.Sleep(sleep)
 			r.metrics.QueriesServfail.Add(1)
 			resp = r.resolve(req, domain)
 		}

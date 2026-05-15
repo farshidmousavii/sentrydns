@@ -197,6 +197,10 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 	r.metrics.InFlightQueries.Add(1)
 	defer r.metrics.InFlightQueries.Add(-1)
 
+	if req == nil || len(req.Question) == 0 {
+		return ServerFail(req)
+	}
+
 	r.metrics.QueriesTotal.Add(1)
 	if cached := r.cache.Get(req); cached != nil {
 		r.metrics.QueriesCached.Add(1)

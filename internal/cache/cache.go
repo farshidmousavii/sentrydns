@@ -36,6 +36,9 @@ func New(log *slog.Logger, minTTL, maxTTL uint32) *Cache {
 
 func (c *Cache) Get(req *dns.Msg) *dns.Msg {
 	key := makeKey(req)
+	if key == "" {
+		return nil
+	}
 	c.mu.RLock()
 	e, ok := c.entries[key]
 	if ok && time.Now().After(e.expires) {
@@ -81,6 +84,9 @@ func (c *Cache) Set(req *dns.Msg, resp *dns.Msg) {
 }
 
 func makeKey(req *dns.Msg) string {
+	if req == nil || len(req.Question) == 0 {
+		return ""
+	}
 	q := req.Question[0]
 	return q.Name + ":" + dns.TypeToString[q.Qtype]
 }

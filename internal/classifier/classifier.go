@@ -34,6 +34,9 @@ func New(rangesFile string) (*Classifier, error) {
 		}
 		c.iranRanges = append(c.iranRanges, network)
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading %s: %w", rangesFile, err)
+	}
 	if len(c.iranRanges) == 0 {
 		return nil, fmt.Errorf("no valid CIDR ranges found in %s", rangesFile)
 	}

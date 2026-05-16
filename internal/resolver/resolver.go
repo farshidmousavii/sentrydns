@@ -364,7 +364,7 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 
 func (r *Resolver) IranDNSHealthy() bool {
 	req := new(dns.Msg)
-	req.SetQuestion("google.com.", dns.TypeA)
+	req.SetQuestion("nic.ir.", dns.TypeA)
 	addr := net.JoinHostPort(r.iranDNS, "53")
 	c := &dns.Client{Timeout: 2 * time.Second}
 	for i := 0; i < 3; i++ {

@@ -201,6 +201,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 			}
 		case <-waitTimer.C:
 		}
+		r.metrics.QueriesGlobal.Add(1)
 		r.log.Info("routed", "domain", domain, "upstream", "global")
 		return globalMsg
 	}

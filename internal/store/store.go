@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/metrics"
@@ -252,6 +253,7 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 	var mu sync.Mutex
 	var toRemove []string
 	var wg sync.WaitGroup
+	var processed atomic.Int64
 
 	work := make(chan string, qps*2)
 	stop := s.stopCleanup
@@ -271,6 +273,7 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 					toRemove = append(toRemove, domain)
 					mu.Unlock()
 				}
+				processed.Add(1)
 			}
 		}()
 	}
@@ -285,7 +288,8 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 			wg.Wait()
 			s.log.Warn("cleanup interrupted by shutdown",
 				"total", total,
-				"processed", sent,
+				"queued", sent,
+				"validated", processed.Load(),
 				"invalidated", len(toRemove),
 			)
 			return

@@ -254,31 +254,36 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 	var wg sync.WaitGroup
 
 	work := make(chan string, qps*2)
+	stop := s.stopCleanup
+
 	for i := 0; i < qps; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for {
+			for domain := range work {
 				select {
-				case domain, ok := <-work:
-					if !ok {
-						return
-					}
-					if !validate(domain) {
-						mu.Lock()
-						toRemove = append(toRemove, domain)
-						mu.Unlock()
-					}
-				case <-s.stopCleanup:
-					for range work {
-					}
+				case <-stop:
 					return
+				default:
+				}
+				if !validate(domain) {
+					mu.Lock()
+					toRemove = append(toRemove, domain)
+					mu.Unlock()
 				}
 			}
 		}()
 	}
+
 	for _, d := range domains {
-		work <- d
+		select {
+		case work <- d:
+		case <-stop:
+			close(work)
+			wg.Wait()
+			s.log.Warn("cleanup interrupted by shutdown")
+			return
+		}
 	}
 	close(work)
 	wg.Wait()

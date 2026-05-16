@@ -331,9 +331,11 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 	if err != nil {
 		if !isIran && r.globalDNSFallback != "" {
 			fbAddr := net.JoinHostPort(r.globalDNSFallback, "53")
+			fbStart := time.Now()
 			fbResp, _, fbErr := (&dns.Client{Timeout: timeout}).Exchange(req, fbAddr)
 			if fbErr == nil {
 				r.metrics.GlobalFallbackCount.Add(1)
+				r.metrics.GlobalFallbackLatencyTotal.Add(int64(time.Since(fbStart)))
 				return fbResp
 			}
 		}

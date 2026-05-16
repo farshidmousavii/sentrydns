@@ -34,6 +34,7 @@ type response struct {
 	GlobalAvgLatencyMs int64 `json:"global_avg_latency_ms"`
 	GlobalTimeouts    int64 `json:"global_timeouts"`
 	GlobalFallbackCount int64 `json:"global_fallback_count"`
+	GlobalFallbackAvgLatencyMs int64 `json:"global_fallback_avg_latency_ms"`
 	TcpFallbackCount  int64  `json:"tcp_fallback_count"`
 	InFlightQueries   int64  `json:"in_flight_queries"`
 }
@@ -63,6 +64,10 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 		if qc := m.GlobalQueryCount.Load(); qc > 0 {
 			globalAvg = (m.GlobalLatencyTotal.Load() / qc) / int64(time.Millisecond)
 		}
+		var globalFallbackAvg int64
+		if fc := m.GlobalFallbackCount.Load(); fc > 0 {
+			globalFallbackAvg = (m.GlobalFallbackLatencyTotal.Load() / fc) / int64(time.Millisecond)
+		}
 
 		resp := response{
 			Uptime:            m.Uptime(),
@@ -91,6 +96,7 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			GlobalAvgLatencyMs: globalAvg,
 			GlobalTimeouts:    m.GlobalTimeouts.Load(),
 			GlobalFallbackCount: m.GlobalFallbackCount.Load(),
+			GlobalFallbackAvgLatencyMs: globalFallbackAvg,
 			TcpFallbackCount:  m.TcpFallbackCount.Load(),
 			InFlightQueries:   m.InFlightQueries.Load(),
 		}

@@ -256,11 +256,21 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for domain := range work {
-				if !validate(domain) {
-					mu.Lock()
-					toRemove = append(toRemove, domain)
-					mu.Unlock()
+			for {
+				select {
+				case domain, ok := <-work:
+					if !ok {
+						return
+					}
+					if !validate(domain) {
+						mu.Lock()
+						toRemove = append(toRemove, domain)
+						mu.Unlock()
+					}
+				case <-s.stopCleanup:
+					for range work {
+					}
+					return
 				}
 			}
 		}()

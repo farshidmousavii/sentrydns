@@ -144,6 +144,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 			case <-globalCh:
 			default:
 			}
+			r.metrics.QueriesIran.Add(1)
 			return iranMsg
 		}
 

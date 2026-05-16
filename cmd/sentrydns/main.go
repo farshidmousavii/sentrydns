@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -83,13 +87,17 @@ func main() {
 		u.Start()
 	}
 
-	cleanupDelay, err := time.ParseDuration(cfg.CleanupInitialDelay)
-	if err != nil {
-		slog.Warn("invalid cleanup_initial_delay, using default 1h", "error", err)
-		cleanupDelay = 1 * time.Hour
+	cleanupDelay, cleanupNext := parseCleanupSchedule(cfg.CleanupSchedule, slog)
+	if cleanupNext == nil {
+		var err error
+		cleanupDelay, err = time.ParseDuration(cfg.CleanupInitialDelay)
+		if err != nil {
+			slog.Warn("invalid cleanup_initial_delay, using default 1h", "error", err)
+			cleanupDelay = 1 * time.Hour
+		}
 	}
 
-	s.StartCleanup(24*time.Hour, cleanupDelay, cfg.CleanupQPS, r.ValidateDomain, r.IranDNSHealthy)
+	s.StartCleanup(cleanupDelay, cfg.CleanupQPS, r.ValidateDomain, r.IranDNSHealthy, cleanupNext)
 
 	dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
 		defer func() {
@@ -156,6 +164,39 @@ func main() {
 
 	slog.Info("bye")
 	closeLog()
+}
+
+func parseCleanupSchedule(schedule string, log *slog.Logger) (time.Duration, func() time.Duration) {
+	if schedule == "" {
+		return 0, nil
+	}
+	parts := strings.Split(schedule, ":")
+	if len(parts) != 2 {
+		log.Warn("invalid cleanup_schedule format, expected HH:MM", "schedule", schedule)
+		return 0, nil
+	}
+	hour, err := strconv.Atoi(parts[0])
+	if err != nil || hour < 0 || hour > 23 {
+		log.Warn("invalid cleanup_schedule hour", "schedule", schedule)
+		return 0, nil
+	}
+	min, err := strconv.Atoi(parts[1])
+	if err != nil || min < 0 || min > 59 {
+		log.Warn("invalid cleanup_schedule minute", "schedule", schedule)
+		return 0, nil
+	}
+
+	nextCleanup := func() time.Duration {
+		now := time.Now()
+		next := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, now.Location())
+		if !next.After(now) {
+			next = next.Add(24 * time.Hour)
+		}
+		return next.Sub(now)
+	}
+
+	log.Info("cleanup scheduled", "at", fmt.Sprintf("%02d:%02d", hour, min), "next", nextCleanup().Round(time.Second))
+	return nextCleanup(), nextCleanup
 }
 
 func ensureLogDir(logFile string) error {

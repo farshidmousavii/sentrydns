@@ -32,6 +32,7 @@ type Config struct {
 	CleanupQPS               int      `yaml:"cleanup_qps"`
 	GlobalDNSTimeout         float64  `yaml:"global_dns_timeout"`
 	GlobalDNSFallback        string   `yaml:"global_dns_fallback"`
+	CleanupSchedule          string   `yaml:"cleanup_schedule"`
 }
 
 func defaultConfig() Config {
@@ -56,6 +57,7 @@ func defaultConfig() Config {
 		CleanupQPS:               100,
 		GlobalDNSTimeout:         1.5,
 		GlobalDNSFallback:        "",
+		CleanupSchedule:          "02:00",
 	}
 }
 

@@ -38,3 +38,7 @@ global_dns_timeout: 1.5
 
 # Optional fallback DNS for global queries (empty = disabled, e.g. "8.8.8.8")
 global_dns_fallback: ""
+
+# Scheduled cleanup time (HH:MM format, 24h). Runs daily at this wall-clock time.
+# Falls back to cleanup_initial_delay + 24h interval if left empty.
+cleanup_schedule: "02:00"

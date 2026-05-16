@@ -162,41 +162,35 @@ func (s *Store) writeAll() {
 	}
 }
 
-func (s *Store) StartCleanup(interval, initialDelay time.Duration, qps int, validate func(string) bool, healthCheck func() bool) {
-	remaining := s.cleanupRemaining(interval)
-
+func (s *Store) StartCleanup(initialDelay time.Duration, qps int, validate func(string) bool, healthCheck func() bool, nextDelay func() time.Duration) {
 	go func() {
-		if remaining > 0 && remaining <= initialDelay {
-			s.log.Info("cleanup deferred", "remaining", remaining.Round(time.Second))
-			timer := time.NewTimer(remaining)
-			select {
-			case <-timer.C:
-				s.cleanup(validate, qps, healthCheck)
-			case <-s.stopCleanup:
-				timer.Stop()
-				return
-			}
-		} else {
-			s.log.Info("cleanup initial delay", "delay", initialDelay.Round(time.Second))
-			timer := time.NewTimer(initialDelay)
-			select {
-			case <-timer.C:
-				s.cleanup(validate, qps, healthCheck)
-			case <-s.stopCleanup:
-				timer.Stop()
-				return
-			}
+		s.log.Info("cleanup initial delay", "delay", initialDelay.Round(time.Second))
+		timer := time.NewTimer(initialDelay)
+		select {
+		case <-timer.C:
+			s.cleanup(validate, qps, healthCheck)
+		case <-s.stopCleanup:
+			timer.Stop()
+			return
 		}
+		timer.Stop()
 
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
 		for {
+			var delay time.Duration
+			if nextDelay != nil {
+				delay = nextDelay()
+			} else {
+				delay = 24 * time.Hour
+			}
+			timer = time.NewTimer(delay)
 			select {
-			case <-ticker.C:
+			case <-timer.C:
 				s.cleanup(validate, qps, healthCheck)
 			case <-s.stopCleanup:
+				timer.Stop()
 				return
 			}
+			timer.Stop()
 		}
 	}()
 }

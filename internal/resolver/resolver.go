@@ -244,6 +244,7 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 		}
 		if resp.Rcode == dns.RcodeServerFailure {
 			r.metrics.QueriesServfail.Add(1)
+			return resp, nil
 		}
 		r.cache.Set(req, resp)
 		return resp, nil

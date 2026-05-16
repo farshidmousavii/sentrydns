@@ -96,6 +96,14 @@ func main() {
 			cleanupDelay = 1 * time.Hour
 		}
 	}
+	const minCleanupDelay = 5 * time.Minute
+	if cleanupDelay < minCleanupDelay {
+		slog.Warn("cleanup_initial_delay too short, enforcing minimum",
+			"configured", cleanupDelay,
+			"minimum", minCleanupDelay,
+		)
+		cleanupDelay = minCleanupDelay
+	}
 
 	s.StartCleanup(cleanupDelay, cfg.CleanupQPS, r.ValidateDomain, r.IranDNSHealthy, cleanupNext)
 

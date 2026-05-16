@@ -173,6 +173,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 		}
 
 		if globalMsg != nil {
+			r.metrics.QueriesGlobal.Add(1)
 			r.log.Info("routed", "domain", domain, "upstream", "global")
 			return globalMsg
 		}

@@ -67,9 +67,10 @@ func main() {
 	})
 	slog.Info("metrics server started", "addr", cfg.MetricsAddr)
 
-	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m)
+	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m, cfg.GlobalDNSFallback)
 
 	r.SetTimeout(time.Duration(cfg.Timeout) * time.Second)
+	r.SetGlobalTimeout(time.Duration(cfg.GlobalDNSTimeout * float64(time.Second)))
 
 	var u *updater.Updater
 	if cfg.IranRangesURL != "" {

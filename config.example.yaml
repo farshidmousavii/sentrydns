@@ -32,3 +32,9 @@ state_file: "data/.sentrydns-state"
 
 cleanup_initial_delay: 1h
 cleanup_qps: 100
+
+# Global DNS timeout in seconds (separate from main timeout, applied only to global upstream)
+global_dns_timeout: 1.5
+
+# Optional fallback DNS for global queries (empty = disabled, e.g. "8.8.8.8")
+global_dns_fallback: ""

@@ -25,22 +25,24 @@ func ServerFail(req *dns.Msg) *dns.Msg {
 }
 
 type Resolver struct {
-	classifier   *classifier.Classifier
-	store        *store.Store
-	cache        *cache.Cache
-	iranDNS      string
-	globalDNS    string
-	timeout      atomic.Int64
-	log          *slog.Logger
-	metrics      *metrics.Metrics
-	iranTLDs     map[string]bool
-	hijackIPs    map[string]bool
-	hijackRanges []*net.IPNet
-	preferIran   map[string]bool
-	sf           singleflight.Group
+	classifier        *classifier.Classifier
+	store             *store.Store
+	cache             *cache.Cache
+	iranDNS           string
+	globalDNS         string
+	timeout           atomic.Int64
+	globalTimeout     atomic.Int64
+	globalDNSFallback string
+	log               *slog.Logger
+	metrics           *metrics.Metrics
+	iranTLDs          map[string]bool
+	hijackIPs         map[string]bool
+	hijackRanges      []*net.IPNet
+	preferIran        map[string]bool
+	sf                singleflight.Group
 }
 
-func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics) *Resolver {
+func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string) *Resolver {
 	tlds := make(map[string]bool)
 	for _, t := range iranTLDs {
 		tlds[strings.ToLower(t)] = true
@@ -65,19 +67,21 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 	}
 
 	r := &Resolver{
-		classifier:   c,
-		store:        s,
-		cache:        cache.New(log, minTTL, maxTTL),
-		iranDNS:      iranDNS,
-		globalDNS:    globalDNS,
-		log:          log,
-		metrics:      m,
-		iranTLDs:     tlds,
-		hijackIPs:    hijacks,
-		hijackRanges: ranges,
-		preferIran:   preferIran,
+		classifier:        c,
+		store:             s,
+		cache:             cache.New(log, minTTL, maxTTL),
+		iranDNS:           iranDNS,
+		globalDNS:         globalDNS,
+		globalDNSFallback: globalDNSFallback,
+		log:               log,
+		metrics:           m,
+		iranTLDs:          tlds,
+		hijackIPs:         hijacks,
+		hijackRanges:      ranges,
+		preferIran:        preferIran,
 	}
 	r.timeout.Store(int64(3 * time.Second))
+	r.globalTimeout.Store(int64(1500 * time.Millisecond))
 	return r
 }
 
@@ -282,7 +286,11 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 }
 
 func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
-	c := &dns.Client{Timeout: time.Duration(r.timeout.Load())}
+	timeout := time.Duration(r.timeout.Load())
+	if upstream == r.globalDNS && r.globalTimeout.Load() > 0 {
+		timeout = time.Duration(r.globalTimeout.Load())
+	}
+	c := &dns.Client{Timeout: timeout}
 
 	addr := upstream
 	if _, _, err := net.SplitHostPort(upstream); err != nil {
@@ -311,13 +319,20 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 	}
 
 	if err != nil {
+		if !isIran && r.globalDNSFallback != "" {
+			fbAddr := net.JoinHostPort(r.globalDNSFallback, "53")
+			fbResp, _, fbErr := (&dns.Client{Timeout: timeout}).Exchange(req, fbAddr)
+			if fbErr == nil {
+				return fbResp
+			}
+		}
 		return nil
 	}
 
 	if resp.Truncated {
 		r.metrics.TcpFallbackCount.Add(1)
 		tcpResp, _, err := (&dns.Client{
-			Timeout: time.Duration(r.timeout.Load()),
+			Timeout: timeout,
 			Net:     "tcp",
 		}).Exchange(req, addr)
 		if err == nil {
@@ -341,9 +356,19 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 func (r *Resolver) IranDNSHealthy() bool {
 	req := new(dns.Msg)
 	req.SetQuestion("google.com.", dns.TypeA)
+	addr := net.JoinHostPort(r.iranDNS, "53")
 	c := &dns.Client{Timeout: 2 * time.Second}
-	resp, _, err := c.Exchange(req, r.iranDNS)
-	return err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess
+	for i := 0; i < 3; i++ {
+		resp, _, err := c.Exchange(req, addr)
+		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
+			return true
+		}
+		if i < 2 {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	r.log.Warn("IranDNS health check failed", "addr", addr)
+	return false
 }
 
 func extractIPs(msg *dns.Msg) []string {
@@ -361,6 +386,10 @@ func extractIPs(msg *dns.Msg) []string {
 
 func (r *Resolver) SetTimeout(d time.Duration) {
 	r.timeout.Store(int64(d))
+}
+
+func (r *Resolver) SetGlobalTimeout(d time.Duration) {
+	r.globalTimeout.Store(int64(d))
 }
 
 func (r *Resolver) Stop() {

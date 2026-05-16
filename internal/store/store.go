@@ -236,10 +236,22 @@ func (s *Store) saveLearnedToday() {
 }
 
 func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck func() bool) {
-	if !healthCheck() {
-		s.log.Warn("cleanup skipped: IranDNS unavailable")
-		s.saveCleanupTime()
-		return
+	backoff := 1 * time.Second
+	const maxBackoff = 60 * time.Second
+	for {
+		if healthCheck() {
+			break
+		}
+		s.log.Warn("cleanup skipped: IranDNS unavailable, retrying", "backoff", backoff)
+		select {
+		case <-time.After(backoff):
+		case <-s.stopCleanup:
+			return
+		}
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
 	}
 
 	start := time.Now()

@@ -30,6 +30,8 @@ type Config struct {
 	StateFile                string   `yaml:"state_file"`
 	CleanupInitialDelay      string   `yaml:"cleanup_initial_delay"`
 	CleanupQPS               int      `yaml:"cleanup_qps"`
+	GlobalDNSTimeout         float64  `yaml:"global_dns_timeout"`
+	GlobalDNSFallback        string   `yaml:"global_dns_fallback"`
 }
 
 func defaultConfig() Config {
@@ -52,6 +54,8 @@ func defaultConfig() Config {
 		StateFile:                "data/.sentrydns-state",
 		CleanupInitialDelay:      "1h",
 		CleanupQPS:               100,
+		GlobalDNSTimeout:         1.5,
+		GlobalDNSFallback:        "",
 	}
 }
 
@@ -106,6 +110,9 @@ func (c *Config) Validate() error {
 	}
 	if c.CleanupInitialDelay == "" {
 		return errors.New("cleanup_initial_delay is required")
+	}
+	if c.GlobalDNSTimeout <= 0 {
+		return errors.New("global_dns_timeout must be positive")
 	}
 	return nil
 }

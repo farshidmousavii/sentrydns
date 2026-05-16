@@ -136,10 +136,12 @@ func (s *Store) Remove(domain string) {
 }
 
 func (s *Store) writeAll() {
+	s.mu.RLock()
 	domains := make([]string, 0, len(s.domains))
 	for d := range s.domains {
 		domains = append(domains, d)
 	}
+	s.mu.RUnlock()
 	slices.Sort(domains)
 
 	f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")

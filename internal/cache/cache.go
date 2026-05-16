@@ -47,7 +47,9 @@ func (c *Cache) Get(req *dns.Msg) *dns.Msg {
 	if ok && time.Now().After(e.expires) {
 		c.mu.RUnlock()
 		c.mu.Lock()
-		delete(c.entries, key)
+		if e, ok := c.entries[key]; ok && time.Now().After(e.expires) {
+			delete(c.entries, key)
+		}
 		c.mu.Unlock()
 		c.log.Debug("cache_miss", "key", key)
 		return nil

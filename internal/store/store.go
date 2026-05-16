@@ -275,13 +275,19 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 		}()
 	}
 
+	sent := 0
 	for _, d := range domains {
 		select {
 		case work <- d:
+			sent++
 		case <-stop:
 			close(work)
 			wg.Wait()
-			s.log.Warn("cleanup interrupted by shutdown")
+			s.log.Warn("cleanup interrupted by shutdown",
+				"total", total,
+				"processed", sent,
+				"invalidated", len(toRemove),
+			)
 			return
 		}
 	}

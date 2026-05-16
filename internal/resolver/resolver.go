@@ -239,11 +239,9 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 		}
 
 		if resp == nil {
-			r.metrics.QueriesServfail.Add(1)
 			return ServerFail(req), nil
 		}
 		if resp.Rcode == dns.RcodeServerFailure {
-			r.metrics.QueriesServfail.Add(1)
 			return resp, nil
 		}
 		r.cache.Set(req, resp)
@@ -252,6 +250,9 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 
 	resp := v.(*dns.Msg).Copy()
 	resp.Id = req.Id
+	if resp.Rcode == dns.RcodeServerFailure {
+		r.metrics.QueriesServfail.Add(1)
+	}
 	return resp
 }
 

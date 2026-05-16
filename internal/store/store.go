@@ -72,7 +72,7 @@ func (s *Store) Add(domain string) {
 		s.metrics.LearnedToday.Add(1)
 	}
 	s.persist(domain)
-	if s.metrics.LearnedTotal.Load()%50 == 0 {
+	if s.metrics != nil && s.metrics.LearnedTotal.Load()%50 == 0 {
 		s.saveLearnedToday()
 	}
 }

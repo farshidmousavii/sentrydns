@@ -13,6 +13,7 @@ type Metrics struct {
 	QueriesIran     atomic.Int64
 	QueriesGlobal   atomic.Int64
 	QueriesRetried atomic.Int64
+	QueriesServfail atomic.Int64
 	QueriesCached   atomic.Int64
 	CacheMiss       atomic.Int64
 	LearnedTotal    atomic.Int64

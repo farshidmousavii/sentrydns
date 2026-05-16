@@ -13,6 +13,7 @@ type State struct {
 	LastCleanupUnix   int64  `json:"last_cleanup_unix"`
 	LearnedTodayDate  string `json:"learned_today_date"`
 	LearnedTodayCount int64  `json:"learned_today_count"`
+	LearnedTotalCount int64  `json:"learned_total_count"`
 }
 
 var updateMu sync.Mutex

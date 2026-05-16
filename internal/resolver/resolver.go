@@ -138,6 +138,15 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 	}
 
 	if iranMsg != nil {
+		qtype := req.Question[0].Qtype
+		if qtype != dns.TypeA && qtype != dns.TypeAAAA {
+			select {
+			case <-globalCh:
+			default:
+			}
+			return iranMsg
+		}
+
 		ips := extractIPs(iranMsg)
 		if len(ips) > 0 && !r.isHijacked(ips) {
 			for _, ip := range ips {
@@ -348,7 +357,7 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 	resp := r.query(req, r.iranDNS)
 	if resp == nil {
-		return false
+		return true
 	}
 	return resp.Rcode != dns.RcodeNameError
 }

@@ -195,21 +195,6 @@ func (s *Store) StartCleanup(initialDelay time.Duration, qps int, validate func(
 	}()
 }
 
-func (s *Store) cleanupRemaining(interval time.Duration) time.Duration {
-	if s.statePath == "" {
-		return -1
-	}
-	st := state.Load(s.statePath)
-	if st.LastCleanupUnix == 0 {
-		return -1
-	}
-	elapsed := time.Since(time.Unix(st.LastCleanupUnix, 0))
-	if elapsed >= interval {
-		return -1
-	}
-	return interval - elapsed
-}
-
 func (s *Store) saveCleanupTime() {
 	if s.statePath == "" {
 		return
@@ -226,6 +211,7 @@ func (s *Store) saveLearnedToday() {
 	state.Update(s.statePath, func(st *state.State) {
 		st.LearnedTodayDate = time.Now().Format("2006-01-02")
 		st.LearnedTodayCount = s.metrics.LearnedToday.Load()
+		st.LearnedTotalCount = s.metrics.LearnedTotal.Load()
 	})
 }
 
@@ -263,28 +249,20 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 	var toRemove []string
 	var wg sync.WaitGroup
 
-	work := make(chan string, 100)
-	limiter := time.NewTicker(time.Second / time.Duration(qps))
-	defer limiter.Stop()
-
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for domain := range work {
-				<-limiter.C
-				if !validate(domain) {
-					mu.Lock()
-					toRemove = append(toRemove, domain)
-					mu.Unlock()
-				}
-			}
-		}()
-	}
+	sem := make(chan struct{}, qps)
 	for _, d := range domains {
-		work <- d
+		wg.Add(1)
+		go func(domain string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if !validate(domain) {
+				mu.Lock()
+				toRemove = append(toRemove, domain)
+				mu.Unlock()
+			}
+		}(d)
 	}
-	close(work)
 	wg.Wait()
 
 	s.mu.Lock()

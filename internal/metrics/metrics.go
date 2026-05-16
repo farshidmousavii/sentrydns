@@ -59,6 +59,7 @@ func New() *Metrics {
 func (m *Metrics) RestoreFromFile(path string) {
 	m.statePath = path
 	st := state.Load(path)
+	m.LearnedTotal.Store(st.LearnedTotalCount)
 	if st.LearnedTodayDate == time.Now().Format("2006-01-02") {
 		m.LearnedToday.Store(st.LearnedTodayCount)
 	}

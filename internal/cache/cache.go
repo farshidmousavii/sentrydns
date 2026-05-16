@@ -72,7 +72,7 @@ func (c *Cache) Set(req *dns.Msg, resp *dns.Msg) {
 		return
 	}
 
-	ttl := minTTL(resp)
+	ttl := responseMinTTL(resp)
 	if ttl == 0 {
 		return
 	}
@@ -101,7 +101,7 @@ func makeKey(req *dns.Msg) string {
 	return strings.ToLower(q.Name) + ":" + dns.TypeToString[q.Qtype]
 }
 
-func minTTL(msg *dns.Msg) uint32 {
+func responseMinTTL(msg *dns.Msg) uint32 {
 	var ttl uint32 = ^uint32(0)
 	for _, ans := range msg.Answer {
 		if ans.Header().Ttl < ttl {

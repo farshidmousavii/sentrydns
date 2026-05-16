@@ -32,6 +32,7 @@ type Metrics struct {
 	GlobalQueryCount   atomic.Int64
 	GlobalTimeouts     atomic.Int64
 	TcpFallbackCount   atomic.Int64
+	GlobalFallbackCount atomic.Int64
 
 	// store operations
 	StoreRemoved atomic.Int64

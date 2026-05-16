@@ -32,7 +32,8 @@ type response struct {
 	IranAvgLatencyMs  int64  `json:"iran_avg_latency_ms"`
 	IranTimeouts      int64  `json:"iran_timeouts"`
 	GlobalAvgLatencyMs int64 `json:"global_avg_latency_ms"`
-	GlobalTimeouts    int64  `json:"global_timeouts"`
+	GlobalTimeouts    int64 `json:"global_timeouts"`
+	GlobalFallbackCount int64 `json:"global_fallback_count"`
 	TcpFallbackCount  int64  `json:"tcp_fallback_count"`
 	InFlightQueries   int64  `json:"in_flight_queries"`
 }
@@ -89,6 +90,7 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			IranTimeouts:      m.IranTimeouts.Load(),
 			GlobalAvgLatencyMs: globalAvg,
 			GlobalTimeouts:    m.GlobalTimeouts.Load(),
+			GlobalFallbackCount: m.GlobalFallbackCount.Load(),
 			TcpFallbackCount:  m.TcpFallbackCount.Load(),
 			InFlightQueries:   m.InFlightQueries.Load(),
 		}

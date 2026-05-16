@@ -332,6 +332,7 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 			fbAddr := net.JoinHostPort(r.globalDNSFallback, "53")
 			fbResp, _, fbErr := (&dns.Client{Timeout: timeout}).Exchange(req, fbAddr)
 			if fbErr == nil {
+				r.metrics.GlobalFallbackCount.Add(1)
 				return fbResp
 			}
 		}

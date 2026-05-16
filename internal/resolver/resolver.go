@@ -194,7 +194,6 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 					for _, ip := range ips {
 						if r.classifier.IsIran(ip) {
 							r.store.Add(domain)
-							r.metrics.QueriesGlobal.Add(1)
 							r.log.Info("learned", "domain", domain, "ip", ip)
 						}
 					}

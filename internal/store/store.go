@@ -249,20 +249,24 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 	var toRemove []string
 	var wg sync.WaitGroup
 
-	sem := make(chan struct{}, qps)
-	for _, d := range domains {
+	work := make(chan string, qps*2)
+	for i := 0; i < qps; i++ {
 		wg.Add(1)
-		go func(domain string) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			if !validate(domain) {
-				mu.Lock()
-				toRemove = append(toRemove, domain)
-				mu.Unlock()
+			for domain := range work {
+				if !validate(domain) {
+					mu.Lock()
+					toRemove = append(toRemove, domain)
+					mu.Unlock()
+				}
 			}
-		}(d)
+		}()
 	}
+	for _, d := range domains {
+		work <- d
+	}
+	close(work)
 	wg.Wait()
 
 	s.mu.Lock()

@@ -29,6 +29,8 @@ else
     rsync -avz data/learned.conf $SERVER:$REMOTE_DIR/data/
 fi
 rsync -avz scripts/install.sh $SERVER:$REMOTE_DIR/scripts/
+rsync -avz scripts/sentrydps.sh $SERVER:$REMOTE_DIR/scripts/
+rsync -avz scripts/sentrydps.service $SERVER:$REMOTE_DIR/scripts/
 rsync -avz scripts/logrotate.conf $SERVER:$REMOTE_DIR/scripts/
 
 echo "==> Running install on server..."

@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"log/slog"
 	"math/rand"
 	"net"
@@ -208,14 +209,16 @@ func (r *Resolver) isPreferIran(domain string) bool {
 	return false
 }
 
-func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
+func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain string) *dns.Msg {
 	iranCh := make(chan *dns.Msg, 1)
 	globalCh := make(chan *dns.Msg, 1)
 
-	go func() { globalCh <- r.query(req, r.globalDNS) }()
+	iranCtx, iranCancel := context.WithCancel(ctx)
+	defer iranCancel()
 
+	go func() { globalCh <- r.query(ctx, req, r.globalDNS) }()
 	if !r.iranCb.isOpen() {
-		go func() { iranCh <- r.queryIranDNS(req) }()
+		go func() { iranCh <- r.queryIranDNS(iranCtx, req) }()
 	}
 
 	shortWait := time.Duration(r.timeout.Load()) / 4
@@ -226,6 +229,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 	case msg := <-iranCh:
 		iranMsg = msg
 	case msg := <-globalCh:
+		iranCancel()
 		globalMsg = msg
 	}
 
@@ -303,7 +307,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 	return ServerFail(req)
 }
 
-func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
+func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	r.metrics.InFlightQueries.Add(1)
 	defer r.metrics.InFlightQueries.Add(-1)
 
@@ -322,14 +326,14 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 	key := strings.ToLower(domain) + ":" + dns.TypeToString[req.Question[0].Qtype]
 
 	v, _, _ := r.sf.Do(key, func() (interface{}, error) {
-		resp := r.resolve(req, domain)
+		resp := r.resolve(ctx, req, domain)
 
 		if resp == nil || resp.Rcode == dns.RcodeServerFailure {
 			base := time.Duration(r.timeout.Load()) / 15
 			sleep := base + time.Duration(rand.Int63n(int64(base/2+1)))
 			time.Sleep(sleep)
 			r.metrics.QueriesRetried.Add(1)
-			resp = r.resolve(req, domain)
+			resp = r.resolve(ctx, req, domain)
 		}
 
 		if resp == nil {
@@ -349,13 +353,13 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 	return resp
 }
 
-func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
+func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dns.Msg {
 	if r.isIranTLD(domain) {
 		r.metrics.PathTLD.Add(1)
-		resp := r.queryIranDNS(req)
+		resp := r.queryIranDNS(ctx, req)
 		if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
-			resp = r.query(req, r.globalDNS)
+			resp = r.query(ctx, req, r.globalDNS)
 			return resp
 		}
 		r.metrics.QueriesIran.Add(1)
@@ -364,7 +368,7 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 
 	if r.isPreferIran(domain) {
 		r.metrics.PathPreferIran.Add(1)
-		resp := r.queryIranDNS(req)
+		resp := r.queryIranDNS(ctx, req)
 		if resp != nil && resp.Rcode == dns.RcodeSuccess {
 			ips := extractIPs(resp)
 			if len(ips) > 0 && !r.isHijacked(ips) {
@@ -374,37 +378,43 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 			}
 		}
 		r.metrics.QueriesGlobal.Add(1)
-		return r.query(req, r.globalDNS)
+		return r.query(ctx, req, r.globalDNS)
 	}
 
 	if r.store.IsIran(domain) {
 		r.metrics.PathStore.Add(1)
-		resp := r.queryIranDNS(req)
+		resp := r.queryIranDNS(ctx, req)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
 			r.store.Remove(domain)
-			return r.resolveWithLearning(req, domain)
+			return r.resolveWithLearning(ctx, req, domain)
 		} else if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
-			return r.query(req, r.globalDNS)
+			return r.query(ctx, req, r.globalDNS)
 		}
 		r.metrics.QueriesIran.Add(1)
 		return resp
 	}
 
 	r.metrics.PathLearn.Add(1)
-	return r.resolveWithLearning(req, domain)
+	return r.resolveWithLearning(ctx, req, domain)
 }
 
-func (r *Resolver) queryIranDNS(req *dns.Msg) *dns.Msg {
+func (r *Resolver) queryIranDNS(ctx context.Context, req *dns.Msg) *dns.Msg {
 	if r.iranCb.isOpen() {
 		r.metrics.IranCBSkipped.Add(1)
 		r.log.Debug("circuit open, skipping IranDNS", "domain", req.Question[0].Name)
 		return nil
 	}
-	return r.query(req, r.iranDNS)
+	return r.query(ctx, req, r.iranDNS)
 }
 
-func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
+func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dns.Msg {
+	select {
+	case <-ctx.Done():
+		return nil
+	default:
+	}
+
 	isIran := upstream == r.iranDNS
 	timeout := time.Duration(r.timeout.Load())
 	if !isIran && r.globalTimeout.Load() > 0 {

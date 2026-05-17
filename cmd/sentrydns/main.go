@@ -138,7 +138,7 @@ func main() {
 			return
 		}
 
-		resp := r.Resolve(req)
+		resp := r.Resolve(context.Background(), req)
 		if resp == nil {
 			resp = resolver.ServerFail(req)
 		}

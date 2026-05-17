@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net"
@@ -147,7 +148,7 @@ func TestIranDomain(t *testing.T) {
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("digikala.com"), dns.TypeA)
 
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success")
 	}
@@ -159,7 +160,7 @@ func TestIranDomain(t *testing.T) {
 	m2 := metrics.New()
 	r2 := New(r.classifier, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m2, "", 0)
 
-	resp = r2.Resolve(req)
+	resp = 	r2.Resolve(context.Background(), req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success on second query using store")
 	}
@@ -181,7 +182,7 @@ func TestForeignDomain(t *testing.T) {
 
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("youtube.com"), dns.TypeA)
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success")
@@ -203,7 +204,7 @@ func TestHijackedDomain(t *testing.T) {
 
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("filtered.com"), dns.TypeA)
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 
 	ips := extractIPs(resp)
 	if len(ips) == 0 || ips[0] != "1.2.3.4" {
@@ -227,7 +228,7 @@ func TestSERVFAILRetry(t *testing.T) {
 	req.SetQuestion(dns.Fqdn("retry-test.com"), dns.TypeA)
 
 	r.SetTimeout(2 * time.Second)
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success via global after iran servfail")
@@ -252,7 +253,7 @@ func TestSERVFAILBothAttempts(t *testing.T) {
 
 	r.SetTimeout(2 * time.Second)
 	r.metrics.QueriesRetried.Store(0)
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 
 	if resp == nil || resp.Rcode != dns.RcodeServerFailure {
 		t.Fatal("expected SERVFAIL after both attempts fail")
@@ -295,7 +296,7 @@ func TestGlobalFallbackDNS(t *testing.T) {
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("fallback-test.com"), dns.TypeA)
 
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success via fallback")
 	}
@@ -325,7 +326,7 @@ func TestQueriesGlobalCounted(t *testing.T) {
 
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("foreign.com"), dns.TypeA)
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success")
@@ -351,7 +352,7 @@ func TestPreferIranDomain(t *testing.T) {
 
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("preferred.com"), dns.TypeA)
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success")
@@ -379,7 +380,7 @@ func TestPTRSkipsClassification(t *testing.T) {
 	req.SetQuestion(dns.Fqdn("1.0.168.192.in-addr.arpa"), dns.TypePTR)
 	req.Question[0].Qtype = dns.TypePTR
 
-	resp := r.Resolve(req)
+	resp := r.Resolve(context.Background(), req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success for PTR query")
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -128,8 +129,8 @@ func main() {
 		start := time.Now()
 
 		clientIP := w.RemoteAddr().String()
-		if i := strings.LastIndex(clientIP, ":"); i >= 0 {
-			clientIP = clientIP[:i]
+		if host, _, err := net.SplitHostPort(clientIP); err == nil {
+			clientIP = host
 		}
 		if cfg.RateLimitPerClient > 0 && !limiter.Allow(clientIP) {
 			m.QueriesRateLimited.Add(1)

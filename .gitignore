@@ -4,3 +4,4 @@ config.yaml
 data/learned.conf
 coverage.out
 coverage.html
+.opencode/

@@ -109,7 +109,6 @@ func (s *Store) persist(domain string) {
 	if _, err := f.WriteString(domain + "\n"); err != nil {
 		s.log.Error("failed to write domain", "domain", domain, "error", err)
 	}
-	f.Sync()
 }
 
 func normalize(domain string) string {

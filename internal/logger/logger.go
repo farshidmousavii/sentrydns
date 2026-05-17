@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bufio"
 	"io"
 	"log/slog"
 	"os"
@@ -22,6 +23,7 @@ func New(level string, jsonFormat bool, logFile string) (*slog.Logger, func()) {
 	opts := &slog.HandlerOptions{Level: l}
 
 	var output io.Writer = os.Stdout
+	var bufWriter *bufio.Writer
 	var file *os.File
 	if logFile != "" {
 		f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -29,7 +31,8 @@ func New(level string, jsonFormat bool, logFile string) (*slog.Logger, func()) {
 			os.Stderr.WriteString("warning: failed to open log file: " + err.Error() + "\n")
 		} else {
 			file = f
-			output = io.MultiWriter(os.Stdout, f)
+			bufWriter = bufio.NewWriterSize(f, 4096)
+			output = io.MultiWriter(os.Stdout, bufWriter)
 		}
 	}
 
@@ -41,6 +44,9 @@ func New(level string, jsonFormat bool, logFile string) (*slog.Logger, func()) {
 	}
 
 	closer := func() {
+		if bufWriter != nil {
+			bufWriter.Flush()
+		}
 		if file != nil {
 			file.Sync()
 			file.Close()

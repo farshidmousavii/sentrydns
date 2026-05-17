@@ -27,8 +27,12 @@ chmod +x "$INSTALL_DIR/sentrydns"
 cp scripts/sentrydps.sh "$INSTALL_DIR/sentrydps.sh"
 chmod +x "$INSTALL_DIR/sentrydps.sh"
 
-cp "$CONFIG" "$INSTALL_DIR/config.yaml"
-echo "==> config.yaml copied"
+if [ ! -f "$INSTALL_DIR/config.yaml" ]; then
+	cp "$CONFIG" "$INSTALL_DIR/config.yaml"
+	echo "==> config.yaml copied"
+else
+	echo "==> config.yaml kept as-is (existing file preserved)"
+fi
 
 cp data/iran-ranges.txt "$INSTALL_DIR/data/"
 if [ ! -f "$INSTALL_DIR/data/learned.conf" ]; then

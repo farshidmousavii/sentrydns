@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -109,4 +110,55 @@ func TestCacheDifferentTypes(t *testing.T) {
 func TestCacheStop(t *testing.T) {
 	c := newTestCache()
 	c.Stop()
+}
+
+func TestCacheEviction(t *testing.T) {
+	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 300, 3600, 3)
+	for i := range 5 {
+		domain := fmt.Sprintf("domain%d.example.com", i)
+		r := req(domain)
+		resp := aResp(domain, "1.2.3.4", 600)
+		c.Set(r, resp)
+	}
+
+	c.mu.RLock()
+	count := len(c.entries)
+	c.mu.RUnlock()
+	if count > 3 {
+		t.Errorf("expected at most 3 entries after eviction, got %d", count)
+	}
+}
+
+func TestCacheEvictionZeroMax(t *testing.T) {
+	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 300, 3600, 0)
+	for i := range 100 {
+		domain := fmt.Sprintf("big%d.example.com", i)
+		r := req(domain)
+		resp := aResp(domain, "1.2.3.4", 600)
+		c.Set(r, resp)
+	}
+
+	c.mu.RLock()
+	count := len(c.entries)
+	c.mu.RUnlock()
+	if count != 100 {
+		t.Errorf("expected 100 entries (unbounded), got %d", count)
+	}
+}
+
+func TestCacheEvictionNoopBelowLimit(t *testing.T) {
+	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 300, 3600, 10)
+	for i := range 3 {
+		domain := fmt.Sprintf("smol%d.example.com", i)
+		r := req(domain)
+		resp := aResp(domain, "1.2.3.4", 600)
+		c.Set(r, resp)
+	}
+
+	c.mu.RLock()
+	count := len(c.entries)
+	c.mu.RUnlock()
+	if count != 3 {
+		t.Errorf("expected 3 entries (below limit), got %d", count)
+	}
 }

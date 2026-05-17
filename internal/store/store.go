@@ -162,7 +162,13 @@ func (s *Store) writeAll() {
 			return
 		}
 	}
-	f.Close()
+	if err := f.Sync(); err != nil {
+		s.log.Error("failed to sync temp file for writeAll", "error", err)
+	}
+	if err := f.Close(); err != nil {
+		s.log.Error("failed to close temp file for writeAll", "error", err)
+		return
+	}
 
 	if err := os.Rename(tmpPath, s.file); err != nil {
 		s.log.Error("failed to rename temp file for writeAll", "error", err)

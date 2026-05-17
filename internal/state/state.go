@@ -45,7 +45,15 @@ func Save(path string, s *State) error {
 		os.Remove(tmpPath)
 		return err
 	}
-	tmp.Close()
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
 	return os.Rename(tmpPath, path)
 }
 

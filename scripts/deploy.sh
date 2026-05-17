@@ -26,6 +26,14 @@ rsync -avz scripts/sentrydps.sh $SERVER:$REMOTE_DIR/scripts/
 rsync -avz scripts/sentrydps.service $SERVER:$REMOTE_DIR/scripts/
 rsync -avz scripts/logrotate.conf $SERVER:$REMOTE_DIR/scripts/
 
+echo "==> Backing up current deployment on server..."
+BACKUP_DIR="/opt/sentrydns/backup"
+ssh $SERVER "mkdir -p $BACKUP_DIR && \
+	cp /opt/sentrydns/sentrydns $BACKUP_DIR/sentrydns.bak 2>/dev/null; \
+	cp /opt/sentrydns/config.yaml $BACKUP_DIR/config.yaml.bak 2>/dev/null; \
+	cp /opt/sentrydns/data/learned.conf $BACKUP_DIR/learned.conf.bak 2>/dev/null; \
+	true"
+
 echo "==> Running install on server..."
 ssh -t $SERVER "cd $REMOTE_DIR && sudo bash scripts/install.sh"
 
@@ -35,9 +43,35 @@ ssh -t $SERVER "sudo systemctl restart sentrydns && sudo systemctl restart sentr
 echo "==> Verifying..."
 sleep 2
 
-ssh -t $SERVER "sudo systemctl is-active --quiet sentrydns" \
+ROLLBACK=0
+ssh $SERVER "sudo systemctl is-active --quiet sentrydns" \
     && echo "OK: sentrydns is running" \
-    || { echo "ERROR: sentrydns not active"; ssh -t $SERVER "sudo journalctl -u sentrydns -n 20"; exit 1; }
+    || { echo "ERROR: sentrydns not active"; ROLLBACK=1; }
+
+if [ "$ROLLBACK" -eq 0 ]; then
+    if ssh $SERVER "command -v dig >/dev/null 2>&1"; then
+        if ssh $SERVER "dig +short @127.0.0.1 -p $PORT google.com 2>/dev/null | grep -q '^[0-9]'"; then
+            echo "OK: sentrydns is responding to queries"
+        else
+            echo "WARNING: sentrydns not responding on port $PORT"
+        fi
+    fi
+fi
+
+if [ "$ROLLBACK" -eq 1 ]; then
+    echo "==> ROLLING BACK..."
+    ssh $SERVER "sudo systemctl stop sentrydns && \
+        cp $BACKUP_DIR/sentrydns.bak /opt/sentrydns/sentrydns && \
+        chmod +x /opt/sentrydns/sentrydns && \
+        sudo systemctl start sentrydns" || true
+    sleep 2
+    ssh -t $SERVER "sudo systemctl is-active --quiet sentrydns" \
+        && echo "OK: rollback succeeded" \
+        || echo "CRITICAL: rollback also failed — manual intervention required"
+    ssh -t $SERVER "sudo journalctl -u sentrydns -n 30 --no-pager"
+    ssh $SERVER "sudo rm -rf $REMOTE_DIR"
+    exit 1
+fi
 
 ssh -t $SERVER "sudo systemctl is-active --quiet sentrydps" \
     && echo "OK: sentrydps is running" \

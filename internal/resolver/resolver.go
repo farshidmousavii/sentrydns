@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,40 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/sync/singleflight"
 )
+
+type circuitBreaker struct {
+	mu        sync.Mutex
+	failures  int
+	threshold int
+	lastOpen  time.Time
+	cooldown  time.Duration
+}
+
+func (cb *circuitBreaker) recordFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.failures++
+	cb.lastOpen = time.Now()
+}
+
+func (cb *circuitBreaker) recordSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.failures = 0
+}
+
+func (cb *circuitBreaker) isOpen() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	if cb.failures >= cb.threshold {
+		if time.Since(cb.lastOpen) > cb.cooldown {
+			cb.failures = 0
+			return false
+		}
+		return true
+	}
+	return false
+}
 
 func ServerFail(req *dns.Msg) *dns.Msg {
 	m := new(dns.Msg)
@@ -40,6 +75,7 @@ type Resolver struct {
 	hijackRanges      []*net.IPNet
 	preferIran        map[string]bool
 	sf                singleflight.Group
+	iranCb            *circuitBreaker
 }
 
 func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string) *Resolver {
@@ -79,6 +115,10 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		hijackIPs:         hijacks,
 		hijackRanges:      ranges,
 		preferIran:        preferIran,
+		iranCb: &circuitBreaker{
+			threshold: 5,
+			cooldown:  30 * time.Second,
+		},
 	}
 	r.timeout.Store(int64(3 * time.Second))
 	r.globalTimeout.Store(int64(1500 * time.Millisecond))
@@ -123,8 +163,11 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 	iranCh := make(chan *dns.Msg, 1)
 	globalCh := make(chan *dns.Msg, 1)
 
-	go func() { iranCh <- r.query(req, r.iranDNS) }()
 	go func() { globalCh <- r.query(req, r.globalDNS) }()
+
+	if !r.iranCb.isOpen() {
+		go func() { iranCh <- r.query(req, r.iranDNS) }()
+	}
 
 	shortWait := time.Duration(r.timeout.Load()) / 4
 
@@ -323,8 +366,10 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 		r.metrics.IranQueryCount.Add(1)
 		if err != nil {
 			r.metrics.IranTimeouts.Add(1)
+			r.iranCb.recordFailure()
 		} else {
 			r.metrics.IranLatencyTotal.Add(int64(elapsed))
+			r.iranCb.recordSuccess()
 		}
 	} else {
 		r.metrics.GlobalQueryCount.Add(1)

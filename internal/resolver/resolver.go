@@ -535,6 +535,9 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 }
 
 func resolveAddr(s string) string {
+	if s == "" {
+		return ""
+	}
 	if _, _, err := net.SplitHostPort(s); err != nil {
 		return net.JoinHostPort(s, "53")
 	}

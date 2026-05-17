@@ -57,11 +57,13 @@ type Metrics struct {
 
 	startTime time.Time
 	statePath string
+	stop      chan struct{}
 }
 
 func New() *Metrics {
 	m := &Metrics{
 		startTime: time.Now(),
+		stop:      make(chan struct{}),
 	}
 	go m.resetDailyStats()
 	return m
@@ -83,14 +85,27 @@ func (m *Metrics) RestoreFromFile(path string) {
 func (m *Metrics) resetDailyStats() {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		m.LearnedToday.Store(0)
-		if m.statePath != "" {
-			state.Update(m.statePath, func(st *state.State) {
-				st.LearnedTodayDate = time.Now().Format("2006-01-02")
-				st.LearnedTodayCount = 0
-			})
+	for {
+		select {
+		case <-ticker.C:
+			m.LearnedToday.Store(0)
+			if m.statePath != "" {
+				state.Update(m.statePath, func(st *state.State) {
+					st.LearnedTodayDate = time.Now().Format("2006-01-02")
+					st.LearnedTodayCount = 0
+				})
+			}
+		case <-m.stop:
+			return
 		}
+	}
+}
+
+func (m *Metrics) Stop() {
+	select {
+	case <-m.stop:
+	default:
+		close(m.stop)
 	}
 }
 

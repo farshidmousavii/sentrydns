@@ -47,12 +47,15 @@ func (s *Store) IsIran(domain string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	parts := strings.Split(domain, ".")
-	for i := range parts {
-		candidate := strings.Join(parts[i:], ".")
-		if s.domains[candidate] {
+	for {
+		if s.domains[domain] {
 			return true
 		}
+		dot := strings.IndexByte(domain, '.')
+		if dot < 0 {
+			break
+		}
+		domain = domain[dot+1:]
 	}
 	return false
 }

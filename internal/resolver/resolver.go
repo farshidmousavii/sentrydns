@@ -461,7 +461,6 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 	c.Net = "udp"
 	dnsCtx, dnsCancel := context.WithTimeout(ctx, timeout)
 	defer dnsCancel()
-	defer dnsClientPool.Put(c)
 
 	addr := r.iranAddr
 	if !isIran {
@@ -491,6 +490,7 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 	}
 	resp, _, err := c.ExchangeContext(dnsCtx, req, addr)
 	elapsed := time.Since(start)
+	dnsClientPool.Put(c)
 
 	if isIran {
 		r.metrics.IranQueryCount.Add(1)

@@ -109,7 +109,7 @@ type Resolver struct {
 	globalAddr        string
 }
 
-func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string) *Resolver {
+func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string, cacheMaxEntries int) *Resolver {
 	tlds := make(map[string]bool)
 	for _, t := range iranTLDs {
 		tlds[strings.ToLower(t)] = true
@@ -136,7 +136,7 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 	r := &Resolver{
 		classifier:        c,
 		store:             s,
-		cache:             cache.New(log, minTTL, maxTTL),
+		cache:             cache.New(log, minTTL, maxTTL, cacheMaxEntries),
 		iranDNS:           iranDNS,
 		globalDNS:         globalDNS,
 		globalDNSFallback: globalDNSFallback,

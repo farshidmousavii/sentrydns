@@ -129,7 +129,7 @@ func newTestResolver(t *testing.T, iranDNS, globalDNS string, iranTLDs, hijackIP
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New()
 	s, _ := store.New(f.Name(), discardLog, m, "")
-	r := New(c, s, iranDNS, globalDNS, discardLog, iranTLDs, hijackIPs, hijackRanges, preferIranDomains, minTTL, maxTTL, m, "")
+	r := New(c, s, iranDNS, globalDNS, discardLog, iranTLDs, hijackIPs, hijackRanges, preferIranDomains, minTTL, maxTTL, m, "", 0)
 	r.SetTimeout(time.Second)
 	return r, s
 }
@@ -157,7 +157,7 @@ func TestIranDomain(t *testing.T) {
 
 	discardLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m2 := metrics.New()
-	r2 := New(r.classifier, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m2, "")
+	r2 := New(r.classifier, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m2, "", 0)
 
 	resp = r2.Resolve(req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
@@ -289,7 +289,7 @@ func TestGlobalFallbackDNS(t *testing.T) {
 		"fallback-test.com.": "9.9.9.9",
 	})
 
-	r := New(c, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m, fallbackAddr)
+	r := New(c, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m, fallbackAddr, 0)
 	r.SetGlobalTimeout(200 * time.Millisecond)
 
 	req := new(dns.Msg)

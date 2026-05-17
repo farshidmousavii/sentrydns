@@ -71,7 +71,7 @@ func main() {
 	})
 	slog.Info("metrics server started", "addr", cfg.MetricsAddr)
 
-	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m, cfg.GlobalDNSFallback)
+	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m, cfg.GlobalDNSFallback, cfg.CacheMaxEntries)
 
 	r.SetTimeout(time.Duration(cfg.Timeout) * time.Second)
 	r.SetGlobalTimeout(time.Duration(cfg.GlobalDNSTimeout * float64(time.Second)))
@@ -129,7 +129,7 @@ func main() {
 		}
 		w.WriteMsg(resp)
 
-		slog.Info("query",
+		slog.Debug("query",
 			"domain", domain,
 			"rcode", resp.Rcode,
 			"answers", len(resp.Answer),

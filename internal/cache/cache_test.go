@@ -11,7 +11,7 @@ import (
 )
 
 func newTestCache() *Cache {
-	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), 300, 3600)
+	return New(slog.New(slog.NewTextHandler(io.Discard, nil)), 300, 3600, 0)
 }
 
 func aResp(domain, ip string, ttl uint32) *dns.Msg {
@@ -55,7 +55,7 @@ func TestCacheMiss(t *testing.T) {
 }
 
 func TestCacheClampsMinTTL(t *testing.T) {
-	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 600, 3600)
+	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 600, 3600, 0)
 	r := req("example.com")
 	resp := aResp("example.com", "1.2.3.4", 60)
 
@@ -77,7 +77,7 @@ func TestCacheClampsMinTTL(t *testing.T) {
 }
 
 func TestCacheExpiry(t *testing.T) {
-	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 1, 1)
+	c := New(slog.New(slog.NewTextHandler(io.Discard, nil)), 1, 1, 0)
 	r := req("short.com")
 	resp := aResp("short.com", "1.2.3.4", 1)
 

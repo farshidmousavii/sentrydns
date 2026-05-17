@@ -15,22 +15,24 @@ type entry struct {
 }
 
 type Cache struct {
-	mu      sync.RWMutex
-	entries map[string]*entry
-	log     *slog.Logger
-	minTTL  uint32
-	maxTTL  uint32
-	stop    chan struct{}
-	once    sync.Once
+	mu         sync.RWMutex
+	entries    map[string]*entry
+	log        *slog.Logger
+	minTTL     uint32
+	maxTTL     uint32
+	maxEntries int
+	stop       chan struct{}
+	once       sync.Once
 }
 
-func New(log *slog.Logger, minTTL, maxTTL uint32) *Cache {
+func New(log *slog.Logger, minTTL, maxTTL uint32, maxEntries int) *Cache {
 	c := &Cache{
-		entries: make(map[string]*entry),
-		minTTL:  minTTL,
-		maxTTL:  maxTTL,
-		log:     log,
-		stop:    make(chan struct{}),
+		entries:    make(map[string]*entry),
+		minTTL:     minTTL,
+		maxTTL:     maxTTL,
+		maxEntries: maxEntries,
+		log:        log,
+		stop:       make(chan struct{}),
 	}
 	go c.cleanup()
 	return c
@@ -86,11 +88,30 @@ func (c *Cache) Set(req *dns.Msg, resp *dns.Msg) {
 
 	key := makeKey(req)
 	c.mu.Lock()
+	if c.maxEntries > 0 && len(c.entries) >= c.maxEntries {
+		c.evictOne()
+	}
 	c.entries[key] = &entry{
 		msg:     resp.Copy(),
 		expires: time.Now().Add(time.Duration(ttl) * time.Second),
 	}
 	c.mu.Unlock()
+}
+
+func (c *Cache) evictOne() {
+	var evictKey string
+	var nearestExpiry time.Time
+	first := true
+	for k, e := range c.entries {
+		if first || e.expires.Before(nearestExpiry) {
+			evictKey = k
+			nearestExpiry = e.expires
+			first = false
+		}
+	}
+	if evictKey != "" {
+		delete(c.entries, evictKey)
+	}
 }
 
 func makeKey(req *dns.Msg) string {

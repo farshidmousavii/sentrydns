@@ -33,6 +33,7 @@ type Config struct {
 	GlobalDNSTimeout         float64  `yaml:"global_dns_timeout"`
 	GlobalDNSFallback        string   `yaml:"global_dns_fallback"`
 	CleanupSchedule          string   `yaml:"cleanup_schedule"`
+	CacheMaxEntries          int      `yaml:"cache_max_entries"`
 }
 
 func defaultConfig() Config {
@@ -58,6 +59,7 @@ func defaultConfig() Config {
 		GlobalDNSTimeout:         1.5,
 		GlobalDNSFallback:        "",
 		CleanupSchedule:          "02:00",
+		CacheMaxEntries:          100000,
 	}
 }
 

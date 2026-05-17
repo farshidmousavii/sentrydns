@@ -258,7 +258,7 @@ while true; do
         alerts_json+=']'
     fi
 
-    printf '{"time":"%s","uptime_sec":"%s","iran_timeout_pct":%s,"global_timeout_pct":%s,"in_flight":%s,"iran_avg_latency_ms":%s,"global_avg_latency_ms":%s,"global_fallback_count":%s,"alerts":%s}\n' \
+    entry=$(printf '{"time":"%s","uptime_sec":"%s","iran_timeout_pct":%s,"global_timeout_pct":%s,"in_flight":%s,"iran_avg_latency_ms":%s,"global_avg_latency_ms":%s,"global_fallback_count":%s,"alerts":%s}' \
         "$(date -Iseconds)" \
         "$uptime" \
         "$iran_timeout_pct" \
@@ -267,7 +267,9 @@ while true; do
         "$d_iran_avg_lat" \
         "$d_global_avg_lat" \
         "$d_global_fb" \
-        "$alerts_json" >> "$LOG"
+        "$alerts_json")
+    echo "$entry" >> "$LOG"
+    echo "$entry" >&2
 
     # print alerts to stderr for journald/capture
     if [ "${#ALERTS[@]}" -gt 0 ]; then

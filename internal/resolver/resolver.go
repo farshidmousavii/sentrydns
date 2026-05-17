@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"net"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,38 +17,54 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+type cbState int32
+
+const (
+	cbClosed   cbState = 0
+	cbOpen     cbState = 1
+	cbHalfOpen cbState = 2
+)
+
 type circuitBreaker struct {
-	mu        sync.Mutex
-	failures  int
-	threshold int
-	lastOpen  time.Time
+	state     atomic.Int32
+	failures  atomic.Int32
+	threshold int32
+	lastOpen  atomic.Int64
 	cooldown  time.Duration
 }
 
 func (cb *circuitBreaker) recordFailure() {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-	cb.failures++
-	cb.lastOpen = time.Now()
+	n := cb.failures.Add(1)
+	if cb.state.Load() == int32(cbHalfOpen) || n >= cb.threshold {
+		cb.state.Store(int32(cbOpen))
+		cb.lastOpen.Store(time.Now().UnixNano())
+	}
 }
 
 func (cb *circuitBreaker) recordSuccess() {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-	cb.failures = 0
+	switch cbState(cb.state.Load()) {
+	case cbHalfOpen:
+		cb.failures.Store(0)
+		cb.state.Store(int32(cbClosed))
+	case cbClosed:
+		for {
+			cur := cb.failures.Load()
+			if cur <= 0 || cb.failures.CompareAndSwap(cur, cur-1) {
+				return
+			}
+		}
+	}
 }
 
 func (cb *circuitBreaker) isOpen() bool {
-	cb.mu.Lock()
-	defer cb.mu.Unlock()
-	if cb.failures >= cb.threshold {
-		if time.Since(cb.lastOpen) > cb.cooldown {
-			cb.failures = 0
-			return false
-		}
-		return true
+	if cb.state.Load() != int32(cbOpen) {
+		return false
 	}
-	return false
+	if time.Since(time.Unix(0, cb.lastOpen.Load())) > cb.cooldown {
+		cb.state.CompareAndSwap(int32(cbOpen), int32(cbHalfOpen))
+		return false
+	}
+	return true
 }
 
 func ServerFail(req *dns.Msg) *dns.Msg {

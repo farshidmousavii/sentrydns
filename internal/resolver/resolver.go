@@ -130,9 +130,12 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 }
 
 func (r *Resolver) isIranTLD(domain string) bool {
-	parts := strings.Split(strings.TrimSuffix(domain, "."), ".")
-	tld := strings.ToLower(parts[len(parts)-1])
-	return r.iranTLDs[tld]
+	domain = strings.TrimSuffix(domain, ".")
+	dot := strings.LastIndexByte(domain, '.')
+	if dot < 0 {
+		return r.iranTLDs[strings.ToLower(domain)]
+	}
+	return r.iranTLDs[strings.ToLower(domain[dot+1:])]
 }
 
 func (r *Resolver) isHijacked(ips []string) bool {
@@ -153,12 +156,16 @@ func (r *Resolver) isHijacked(ips []string) bool {
 }
 
 func (r *Resolver) isPreferIran(domain string) bool {
-	parts := strings.Split(strings.TrimSuffix(domain, "."), ".")
-	for i := range parts {
-		candidate := strings.Join(parts[i:], ".")
-		if r.preferIran[candidate] {
+	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
+	for {
+		if r.preferIran[domain] {
 			return true
 		}
+		dot := strings.IndexByte(domain, '.')
+		if dot < 0 {
+			break
+		}
+		domain = domain[dot+1:]
 	}
 	return false
 }

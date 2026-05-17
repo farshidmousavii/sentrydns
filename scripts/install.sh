@@ -33,10 +33,9 @@ echo "==> config.yaml copied"
 cp data/iran-ranges.txt "$INSTALL_DIR/data/"
 if [ ! -f "$INSTALL_DIR/data/learned.conf" ]; then
     cp data/learned.conf "$INSTALL_DIR/data/"
-    echo "==> learned.conf copied"
+    echo "==> learned.conf copied from package"
 else
-    sort -u "$INSTALL_DIR/data/learned.conf" data/learned.conf -o "$INSTALL_DIR/data/learned.conf"
-    echo "==> learned.conf merged with local"
+    echo "==> learned.conf kept as-is (existing file preserved)"
 fi
 
 echo "==> Installing systemd services..."

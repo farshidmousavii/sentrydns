@@ -20,14 +20,7 @@ ssh $SERVER "mkdir -p $REMOTE_DIR/data $REMOTE_DIR/scripts"
 rsync -avz sentrydns $SERVER:$REMOTE_DIR/
 rsync -avz config.yaml $SERVER:$REMOTE_DIR/
 rsync -avz data/iran-ranges.txt $SERVER:$REMOTE_DIR/data/
-if ssh $SERVER "test -f /opt/sentrydns/data/learned.conf"; then
-    ssh $SERVER "cat /opt/sentrydns/data/learned.conf" > /tmp/.remote-learned.conf
-    sort -u /tmp/.remote-learned.conf data/learned.conf -o /tmp/.merged-learned.conf
-    rsync -avz /tmp/.merged-learned.conf $SERVER:$REMOTE_DIR/data/learned.conf
-    rm -f /tmp/.remote-learned.conf /tmp/.merged-learned.conf
-else
-    rsync -avz data/learned.conf $SERVER:$REMOTE_DIR/data/
-fi
+echo "==> learned.conf on server kept as-is (not overwritten)"
 rsync -avz scripts/install.sh $SERVER:$REMOTE_DIR/scripts/
 rsync -avz scripts/sentrydps.sh $SERVER:$REMOTE_DIR/scripts/
 rsync -avz scripts/sentrydps.service $SERVER:$REMOTE_DIR/scripts/

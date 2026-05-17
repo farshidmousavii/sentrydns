@@ -4,12 +4,15 @@ set -e
 SERVICE_NAME="sentrydns"
 INSTALL_DIR="/opt/sentrydns"
 
-echo "==> Stopping service..."
+echo "==> Stopping services..."
 systemctl stop $SERVICE_NAME 2>/dev/null || true
 systemctl disable $SERVICE_NAME 2>/dev/null || true
+systemctl stop sentrydps 2>/dev/null || true
+systemctl disable sentrydps 2>/dev/null || true
 
-echo "==> Removing service file..."
+echo "==> Removing service files..."
 rm -f /etc/systemd/system/$SERVICE_NAME.service
+rm -f /etc/systemd/system/sentrydps.service
 systemctl daemon-reload
 
 echo "==> Removing logrotate config..."

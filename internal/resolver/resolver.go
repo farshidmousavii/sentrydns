@@ -225,7 +225,7 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 	r.metrics.CacheMiss.Add(1)
 
 	domain := req.Question[0].Name
-	key := domain + ":" + dns.TypeToString[req.Question[0].Qtype]
+	key := strings.ToLower(domain) + ":" + dns.TypeToString[req.Question[0].Qtype]
 
 	v, _, _ := r.sf.Do(key, func() (interface{}, error) {
 		resp := r.resolve(req, domain)
@@ -369,8 +369,10 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 func (r *Resolver) ValidateDomain(domain string) bool {
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
-	resp := r.query(req, r.iranDNS)
-	if resp == nil {
+	c := &dns.Client{Timeout: time.Duration(r.timeout.Load())}
+	addr := net.JoinHostPort(r.iranDNS, "53")
+	resp, _, err := c.Exchange(req, addr)
+	if err != nil || resp == nil {
 		return true
 	}
 	return resp.Rcode != dns.RcodeNameError

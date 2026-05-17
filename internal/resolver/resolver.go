@@ -2,8 +2,8 @@ package resolver
 
 import (
 	"context"
+	"crypto/rand"
 	"log/slog"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -85,7 +85,9 @@ func (cb *circuitBreaker) isOpen() bool {
 
 func ServerFail(req *dns.Msg) *dns.Msg {
 	m := new(dns.Msg)
-	m.SetReply(req)
+	if req != nil {
+		m.SetReply(req)
+	}
 	m.Rcode = dns.RcodeServerFailure
 	return m
 }
@@ -248,6 +250,8 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	case msg := <-globalCh:
 		iranCancel()
 		globalMsg = msg
+	case <-ctx.Done():
+		return ServerFail(req)
 	}
 
 	if iranMsg != nil {
@@ -324,7 +328,10 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	r.metrics.InFlightQueries.Add(1)
 	defer r.metrics.InFlightQueries.Add(-1)
 
-	if req == nil || len(req.Question) == 0 {
+	if req == nil {
+		return ServerFail(nil)
+	}
+	if len(req.Question) == 0 {
 		return ServerFail(req)
 	}
 
@@ -336,6 +343,7 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	r.metrics.CacheMiss.Add(1)
 
 	domain := req.Question[0].Name
+	origID := req.Id
 	key := strings.ToLower(domain) + ":" + dns.TypeToString[req.Question[0].Qtype]
 
 	v, _, _ := r.sf.Do(key, func() (interface{}, error) {
@@ -359,7 +367,7 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	})
 
 	resp := v.(*dns.Msg).Copy()
-	resp.Id = req.Id
+	resp.Id = origID
 	return resp
 }
 
@@ -371,6 +379,11 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 			r.metrics.QueriesGlobal.Add(1)
 			resp = r.query(ctx, req, r.globalDNS)
 			return resp
+		}
+		if ips := extractIPs(resp); len(ips) > 0 && r.isHijacked(ips) {
+			r.log.Warn("hijacked response for TLD domain", "domain", domain)
+			r.metrics.QueriesGlobal.Add(1)
+			return r.query(ctx, req, r.globalDNS)
 		}
 		r.metrics.QueriesIran.Add(1)
 		return resp
@@ -398,6 +411,11 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 			r.store.Remove(domain)
 			return r.resolveWithLearning(ctx, req, domain)
 		} else if resp == nil || resp.Rcode != dns.RcodeSuccess {
+			r.metrics.QueriesGlobal.Add(1)
+			return r.query(ctx, req, r.globalDNS)
+		}
+		if ips := extractIPs(resp); len(ips) > 0 && r.isHijacked(ips) {
+			r.log.Warn("hijacked response for store domain", "domain", domain)
 			r.metrics.QueriesGlobal.Add(1)
 			return r.query(ctx, req, r.globalDNS)
 		}
@@ -465,7 +483,15 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 	}
 
 	start := time.Now()
-	req.Id = uint16(rand.Intn(65536))
+	var idBuf [2]byte
+	if _, err := rand.Read(idBuf[:]); err != nil {
+		req.Id = 1
+	} else {
+		req.Id = uint16(idBuf[0])<<8 | uint16(idBuf[1])
+		if req.Id == 0 {
+			req.Id = 1
+		}
+	}
 	resp, _, err := c.ExchangeContext(dnsCtx, req, addr)
 	elapsed := time.Since(start)
 

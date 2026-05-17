@@ -3,6 +3,7 @@ package metrics
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -136,8 +137,8 @@ func (m *Metrics) StartServer(addr string, storeSize func() int64) *http.Server 
 		WriteTimeout: 10 * time.Second,
 	}
 	go func() {
-		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			panic(err)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("metrics server error", "error", err)
 		}
 	}()
 	return srv

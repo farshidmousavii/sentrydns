@@ -1,11 +1,34 @@
 package logger
 
 import (
-	"bufio"
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 )
+
+type lockedFile struct {
+	mu sync.Mutex
+	f  *os.File
+}
+
+func (l *lockedFile) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Write(p)
+}
+
+func (l *lockedFile) Sync() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Sync()
+}
+
+func (l *lockedFile) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.f.Close()
+}
 
 func New(level string, jsonFormat bool, logFile string) (*slog.Logger, func()) {
 	var l slog.Level
@@ -23,16 +46,14 @@ func New(level string, jsonFormat bool, logFile string) (*slog.Logger, func()) {
 	opts := &slog.HandlerOptions{Level: l}
 
 	var output io.Writer = os.Stdout
-	var bufWriter *bufio.Writer
-	var file *os.File
+	var lf *lockedFile
 	if logFile != "" {
 		f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			os.Stderr.WriteString("warning: failed to open log file: " + err.Error() + "\n")
 		} else {
-			file = f
-			bufWriter = bufio.NewWriterSize(f, 4096)
-			output = io.MultiWriter(os.Stdout, bufWriter)
+			lf = &lockedFile{f: f}
+			output = io.MultiWriter(os.Stdout, lf)
 		}
 	}
 
@@ -44,12 +65,9 @@ func New(level string, jsonFormat bool, logFile string) (*slog.Logger, func()) {
 	}
 
 	closer := func() {
-		if bufWriter != nil {
-			bufWriter.Flush()
-		}
-		if file != nil {
-			file.Sync()
-			file.Close()
+		if lf != nil {
+			lf.Sync()
+			lf.Close()
 		}
 	}
 

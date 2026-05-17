@@ -45,6 +45,8 @@ type Metrics struct {
 
 	// circuit breaker
 	IranCBSkipped atomic.Int64
+	IranCBTrips   atomic.Int64
+	IranCBOpen    atomic.Int64 // gauge: 1 = open/half-open, 0 = closed
 
 	// iran-ranges update
 	LastUpdateTime    atomic.Value // time.Time

@@ -26,18 +26,24 @@ const (
 )
 
 type circuitBreaker struct {
-	state     atomic.Int32
-	failures  atomic.Int32
-	threshold int32
-	lastOpen  atomic.Int64
-	cooldown  time.Duration
+	state         atomic.Int32
+	failures      atomic.Int32
+	threshold     int32
+	lastOpen      atomic.Int64
+	cooldown      time.Duration
+	onStateChange func(cbState)
 }
 
 func (cb *circuitBreaker) recordFailure() {
 	n := cb.failures.Add(1)
-	if cb.state.Load() == int32(cbHalfOpen) || n >= cb.threshold {
-		cb.state.Store(int32(cbOpen))
-		cb.lastOpen.Store(time.Now().UnixNano())
+	prev := cbState(cb.state.Load())
+	if prev == cbHalfOpen || (prev == cbClosed && n >= cb.threshold) {
+		if cb.state.CompareAndSwap(int32(prev), int32(cbOpen)) {
+			cb.lastOpen.Store(time.Now().UnixNano())
+			if cb.onStateChange != nil {
+				cb.onStateChange(cbOpen)
+			}
+		}
 	}
 }
 
@@ -46,6 +52,9 @@ func (cb *circuitBreaker) recordSuccess() {
 	case cbHalfOpen:
 		cb.failures.Store(0)
 		cb.state.Store(int32(cbClosed))
+		if cb.onStateChange != nil {
+			cb.onStateChange(cbClosed)
+		}
 	case cbClosed:
 		for {
 			cur := cb.failures.Load()
@@ -137,6 +146,15 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		iranCb: &circuitBreaker{
 			threshold: 5,
 			cooldown:  30 * time.Second,
+			onStateChange: func(s cbState) {
+				switch s {
+				case cbOpen:
+					m.IranCBTrips.Add(1)
+					m.IranCBOpen.Store(1)
+				case cbClosed:
+					m.IranCBOpen.Store(0)
+				}
+			},
 		},
 	}
 	r.timeout.Store(int64(3 * time.Second))

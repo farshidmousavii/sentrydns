@@ -36,8 +36,11 @@ type response struct {
 	GlobalTimeouts    int64 `json:"global_timeouts"`
 	GlobalFallbackCount int64 `json:"global_fallback_count"`
 	GlobalFallbackAvgLatencyMs int64 `json:"global_fallback_avg_latency_ms"`
-	TcpFallbackCount  int64  `json:"tcp_fallback_count"`
-	InFlightQueries   int64  `json:"in_flight_queries"`
+	TcpFallbackCount  int64 `json:"tcp_fallback_count"`
+	InFlightQueries   int64 `json:"in_flight_queries"`
+	IranCBSkipped     int64 `json:"iran_cb_skipped"`
+	IranCBTrips       int64 `json:"iran_cb_trips"`
+	IranCBOpen        int64 `json:"iran_cb_open"`
 }
 
 func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
@@ -100,8 +103,11 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			GlobalFallbackCount: m.GlobalFallbackCount.Load(),
 			GlobalFallbackAvgLatencyMs: globalFallbackAvg,
 			TcpFallbackCount:  m.TcpFallbackCount.Load(),
-			InFlightQueries:   m.InFlightQueries.Load(),
-		}
+		InFlightQueries:   m.InFlightQueries.Load(),
+		IranCBSkipped:     m.IranCBSkipped.Load(),
+		IranCBTrips:       m.IranCBTrips.Load(),
+		IranCBOpen:        m.IranCBOpen.Load(),
+	}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)

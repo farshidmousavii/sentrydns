@@ -223,11 +223,16 @@ func (s *Store) saveLearnedToday() {
 func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck func() bool) {
 	backoff := 1 * time.Second
 	const maxBackoff = 60 * time.Second
+	retries := 0
 	for {
 		if healthCheck() {
+			if retries > 0 {
+				s.log.Info("IranDNS recovered, proceeding with cleanup", "retries", retries)
+			}
 			break
 		}
-		s.log.Warn("cleanup skipped: IranDNS unavailable, retrying", "backoff", backoff)
+		retries++
+		s.log.Warn("cleanup waiting for IranDNS", "backoff", backoff, "attempt", retries)
 		select {
 		case <-time.After(backoff):
 		case <-s.stopCleanup:
@@ -268,12 +273,13 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 					return
 				default:
 				}
-				if !validate(domain) {
+				valid := validate(domain)
+				processed.Add(1)
+				if !valid {
 					mu.Lock()
 					toRemove = append(toRemove, domain)
 					mu.Unlock()
 				}
-				processed.Add(1)
 			}
 		}()
 	}
@@ -290,7 +296,7 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 				"total", total,
 				"queued", sent,
 				"validated", processed.Load(),
-				"invalidated", len(toRemove),
+				"would_remove", len(toRemove),
 			)
 			return
 		}

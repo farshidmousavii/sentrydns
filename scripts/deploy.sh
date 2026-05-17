@@ -28,10 +28,10 @@ rsync -avz scripts/logrotate.conf $SERVER:$REMOTE_DIR/scripts/
 
 echo "==> Backing up current deployment on server..."
 BACKUP_DIR="/opt/sentrydns/backup"
-ssh $SERVER "mkdir -p $BACKUP_DIR && \
-	cp /opt/sentrydns/sentrydns $BACKUP_DIR/sentrydns.bak 2>/dev/null; \
-	cp /opt/sentrydns/config.yaml $BACKUP_DIR/config.yaml.bak 2>/dev/null; \
-	cp /opt/sentrydns/data/learned.conf $BACKUP_DIR/learned.conf.bak 2>/dev/null; \
+ssh -t $SERVER "sudo mkdir -p $BACKUP_DIR && \
+	sudo cp /opt/sentrydns/sentrydns $BACKUP_DIR/sentrydns.bak 2>/dev/null; \
+	sudo cp /opt/sentrydns/config.yaml $BACKUP_DIR/config.yaml.bak 2>/dev/null; \
+	sudo cp /opt/sentrydns/data/learned.conf $BACKUP_DIR/learned.conf.bak 2>/dev/null; \
 	true"
 
 echo "==> Running install on server..."
@@ -44,7 +44,7 @@ echo "==> Verifying..."
 sleep 2
 
 ROLLBACK=0
-ssh $SERVER "sudo systemctl is-active --quiet sentrydns" \
+ssh -t $SERVER "sudo systemctl is-active --quiet sentrydns" \
     && echo "OK: sentrydns is running" \
     || { echo "ERROR: sentrydns not active"; ROLLBACK=1; }
 
@@ -60,16 +60,16 @@ fi
 
 if [ "$ROLLBACK" -eq 1 ]; then
     echo "==> ROLLING BACK..."
-    ssh $SERVER "sudo systemctl stop sentrydns && \
-        cp $BACKUP_DIR/sentrydns.bak /opt/sentrydns/sentrydns && \
-        chmod +x /opt/sentrydns/sentrydns && \
+    ssh -t $SERVER "sudo systemctl stop sentrydns && \
+        sudo cp $BACKUP_DIR/sentrydns.bak /opt/sentrydns/sentrydns && \
+        sudo chmod +x /opt/sentrydns/sentrydns && \
         sudo systemctl start sentrydns" || true
     sleep 2
     ssh -t $SERVER "sudo systemctl is-active --quiet sentrydns" \
         && echo "OK: rollback succeeded" \
         || echo "CRITICAL: rollback also failed — manual intervention required"
     ssh -t $SERVER "sudo journalctl -u sentrydns -n 30 --no-pager"
-    ssh $SERVER "sudo rm -rf $REMOTE_DIR"
+    ssh -t $SERVER "sudo rm -rf $REMOTE_DIR"
     exit 1
 fi
 

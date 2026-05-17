@@ -179,6 +179,7 @@ func main() {
 	tcpServer.Shutdown()
 	metricsSrv.Shutdown(context.Background())
 
+	m.Stop()
 	r.Stop()
 	s.Stop()
 	if u != nil {

@@ -43,6 +43,9 @@ type Metrics struct {
 	// in-flight gauge
 	InFlightQueries atomic.Int64
 
+	// circuit breaker
+	IranCBSkipped atomic.Int64
+
 	// iran-ranges update
 	LastUpdateTime    atomic.Value // time.Time
 	LastUpdateSuccess atomic.Bool

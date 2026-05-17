@@ -192,7 +192,7 @@ func (r *Resolver) resolveWithLearning(req *dns.Msg, domain string) *dns.Msg {
 	go func() { globalCh <- r.query(req, r.globalDNS) }()
 
 	if !r.iranCb.isOpen() {
-		go func() { iranCh <- r.query(req, r.iranDNS) }()
+		go func() { iranCh <- r.queryIranDNS(req) }()
 	}
 
 	shortWait := time.Duration(r.timeout.Load()) / 4
@@ -327,7 +327,7 @@ func (r *Resolver) Resolve(req *dns.Msg) *dns.Msg {
 func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 	if r.isIranTLD(domain) {
 		r.metrics.PathTLD.Add(1)
-		resp := r.query(req, r.iranDNS)
+		resp := r.queryIranDNS(req)
 		if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
 			resp = r.query(req, r.globalDNS)
@@ -339,7 +339,7 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 
 	if r.isPreferIran(domain) {
 		r.metrics.PathPreferIran.Add(1)
-		resp := r.query(req, r.iranDNS)
+		resp := r.queryIranDNS(req)
 		if resp != nil && resp.Rcode == dns.RcodeSuccess {
 			ips := extractIPs(resp)
 			if len(ips) > 0 && !r.isHijacked(ips) {
@@ -354,7 +354,7 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 
 	if r.store.IsIran(domain) {
 		r.metrics.PathStore.Add(1)
-		resp := r.query(req, r.iranDNS)
+		resp := r.queryIranDNS(req)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
 			r.store.Remove(domain)
 			return r.resolveWithLearning(req, domain)
@@ -368,6 +368,15 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 
 	r.metrics.PathLearn.Add(1)
 	return r.resolveWithLearning(req, domain)
+}
+
+func (r *Resolver) queryIranDNS(req *dns.Msg) *dns.Msg {
+	if r.iranCb.isOpen() {
+		r.metrics.IranCBSkipped.Add(1)
+		r.log.Debug("circuit open, skipping IranDNS", "domain", req.Question[0].Name)
+		return nil
+	}
+	return r.query(req, r.iranDNS)
 }
 
 func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {

@@ -63,11 +63,8 @@ func (cb *circuitBreaker) recordSuccess() {
 			}
 		}
 	case cbClosed:
-		for {
-			cur := cb.failures.Load()
-			if cur <= 0 || cb.failures.CompareAndSwap(cur, cur-1) {
-				return
-			}
+		if cb.failures.Load() > 0 {
+			cb.failures.Add(-1)
 		}
 	}
 }
@@ -294,7 +291,7 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	}
 
 	if globalMsg != nil {
-		if !r.iranCb.isOpen() {
+		if !iranOpen {
 			waitTimer := time.NewTimer(shortWait)
 			select {
 			case msg := <-iranCh:

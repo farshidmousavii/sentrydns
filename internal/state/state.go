@@ -40,6 +40,7 @@ func Save(path string, s *State) error {
 		return err
 	}
 	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)

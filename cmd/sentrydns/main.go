@@ -18,6 +18,7 @@ import (
 	"github.com/farshidmousavii/sentrydns/internal/config"
 	"github.com/farshidmousavii/sentrydns/internal/logger"
 	"github.com/farshidmousavii/sentrydns/internal/metrics"
+	"github.com/farshidmousavii/sentrydns/internal/ratelimit"
 	"github.com/farshidmousavii/sentrydns/internal/resolver"
 	"github.com/farshidmousavii/sentrydns/internal/store"
 	"github.com/farshidmousavii/sentrydns/internal/updater"
@@ -76,6 +77,9 @@ func main() {
 	r.SetTimeout(time.Duration(cfg.Timeout) * time.Second)
 	r.SetGlobalTimeout(time.Duration(cfg.GlobalDNSTimeout * float64(time.Second)))
 
+	limiter := ratelimit.New(cfg.RateLimitPerClient)
+	defer limiter.Stop()
+
 	var u *updater.Updater
 	if cfg.IranRangesURL != "" {
 		interval, err := time.ParseDuration(cfg.IranRangesUpdateInterval)
@@ -122,6 +126,17 @@ func main() {
 
 		domain := req.Question[0].Name
 		start := time.Now()
+
+		clientIP := w.RemoteAddr().String()
+		if i := strings.LastIndex(clientIP, ":"); i >= 0 {
+			clientIP = clientIP[:i]
+		}
+		if cfg.RateLimitPerClient > 0 && !limiter.Allow(clientIP) {
+			m.QueriesRateLimited.Add(1)
+			slog.Warn("rate limited", "client", clientIP, "domain", domain)
+			w.WriteMsg(resolver.ServerFail(req))
+			return
+		}
 
 		resp := r.Resolve(req)
 		if resp == nil {

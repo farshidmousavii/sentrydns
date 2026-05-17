@@ -38,6 +38,7 @@ type response struct {
 	GlobalFallbackAvgLatencyMs int64 `json:"global_fallback_avg_latency_ms"`
 	TcpFallbackCount  int64 `json:"tcp_fallback_count"`
 	InFlightQueries   int64 `json:"in_flight_queries"`
+	QueriesRateLimited int64 `json:"queries_rate_limited"`
 	IranCBSkipped     int64 `json:"iran_cb_skipped"`
 	IranCBTrips       int64 `json:"iran_cb_trips"`
 	IranCBOpen        int64 `json:"iran_cb_open"`
@@ -104,6 +105,7 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			GlobalFallbackAvgLatencyMs: globalFallbackAvg,
 			TcpFallbackCount:  m.TcpFallbackCount.Load(),
 		InFlightQueries:   m.InFlightQueries.Load(),
+		QueriesRateLimited: m.QueriesRateLimited.Load(),
 		IranCBSkipped:     m.IranCBSkipped.Load(),
 		IranCBTrips:       m.IranCBTrips.Load(),
 		IranCBOpen:        m.IranCBOpen.Load(),

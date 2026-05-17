@@ -34,6 +34,7 @@ type Config struct {
 	GlobalDNSFallback        string   `yaml:"global_dns_fallback"`
 	CleanupSchedule          string   `yaml:"cleanup_schedule"`
 	CacheMaxEntries          int      `yaml:"cache_max_entries"`
+	RateLimitPerClient       int      `yaml:"rate_limit_per_client"`
 }
 
 func defaultConfig() Config {
@@ -60,6 +61,7 @@ func defaultConfig() Config {
 		GlobalDNSFallback:        "",
 		CleanupSchedule:          "02:00",
 		CacheMaxEntries:          100000,
+		RateLimitPerClient:       0,
 	}
 }
 

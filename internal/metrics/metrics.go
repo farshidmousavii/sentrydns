@@ -43,6 +43,9 @@ type Metrics struct {
 	// in-flight gauge
 	InFlightQueries atomic.Int64
 
+	// rate limiting
+	QueriesRateLimited atomic.Int64
+
 	// circuit breaker
 	IranCBSkipped atomic.Int64
 	IranCBTrips   atomic.Int64

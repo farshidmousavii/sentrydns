@@ -29,15 +29,19 @@ rsync -avz scripts/logrotate.conf $SERVER:$REMOTE_DIR/scripts/
 echo "==> Running install on server..."
 ssh -t $SERVER "cd $REMOTE_DIR && sudo bash scripts/install.sh"
 
-echo "==> Restarting service..."
-ssh -t $SERVER "sudo systemctl restart sentrydns"
+echo "==> Restarting services..."
+ssh -t $SERVER "sudo systemctl restart sentrydns && sudo systemctl restart sentrydps"
 
 echo "==> Verifying..."
 sleep 2
 
 ssh -t $SERVER "sudo systemctl is-active --quiet sentrydns" \
-    && echo "OK: service is running" \
-    || { echo "ERROR: service not active"; ssh -t $SERVER "sudo journalctl -u sentrydns -n 20"; exit 1; }
+    && echo "OK: sentrydns is running" \
+    || { echo "ERROR: sentrydns not active"; ssh -t $SERVER "sudo journalctl -u sentrydns -n 20"; exit 1; }
+
+ssh -t $SERVER "sudo systemctl is-active --quiet sentrydps" \
+    && echo "OK: sentrydps is running" \
+    || echo "WARNING: sentrydps not active — check 'systemctl status sentrydps'"
 
 if ssh $SERVER "command -v dig >/dev/null 2>&1"; then
     if ssh $SERVER "dig +short @127.0.0.1 -p $PORT google.com 2>/dev/null | grep -q '^[0-9]'"; then

@@ -65,6 +65,7 @@ echo "==> Reloading systemd..."
 systemctl daemon-reload
 systemctl enable $SERVICE_NAME
 systemctl enable sentrydps
+systemctl start sentrydps
 
 echo ""
 echo "Installation complete!"

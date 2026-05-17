@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -464,6 +465,7 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 	}
 
 	start := time.Now()
+	req.Id = uint16(rand.Intn(65536))
 	resp, _, err := c.ExchangeContext(dnsCtx, req, addr)
 	elapsed := time.Since(start)
 

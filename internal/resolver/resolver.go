@@ -76,6 +76,8 @@ type Resolver struct {
 	preferIran        map[string]bool
 	sf                singleflight.Group
 	iranCb            *circuitBreaker
+	iranAddr          string
+	globalAddr        string
 }
 
 func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string) *Resolver {
@@ -115,6 +117,8 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		hijackIPs:         hijacks,
 		hijackRanges:      ranges,
 		preferIran:        preferIran,
+		iranAddr:          resolveAddr(iranDNS),
+		globalAddr:        resolveAddr(globalDNS),
 		iranCb: &circuitBreaker{
 			threshold: 5,
 			cooldown:  30 * time.Second,
@@ -345,22 +349,29 @@ func (r *Resolver) resolve(req *dns.Msg, domain string) *dns.Msg {
 }
 
 func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
+	isIran := upstream == r.iranDNS
 	timeout := time.Duration(r.timeout.Load())
-	if upstream == r.globalDNS && r.globalTimeout.Load() > 0 {
+	if !isIran && r.globalTimeout.Load() > 0 {
 		timeout = time.Duration(r.globalTimeout.Load())
 	}
 	c := &dns.Client{Timeout: timeout}
 
-	addr := upstream
-	if _, _, err := net.SplitHostPort(upstream); err != nil {
-		addr = net.JoinHostPort(upstream, "53")
+	addr := r.iranAddr
+	if !isIran {
+		if upstream == r.globalDNS {
+			addr = r.globalAddr
+		} else {
+			addr = upstream
+			if _, _, err := net.SplitHostPort(upstream); err != nil {
+				addr = net.JoinHostPort(upstream, "53")
+			}
+		}
 	}
 
 	start := time.Now()
 	resp, _, err := c.Exchange(req, addr)
 	elapsed := time.Since(start)
 
-	isIran := upstream == r.iranDNS
 	if isIran {
 		r.metrics.IranQueryCount.Add(1)
 		if err != nil {
@@ -414,21 +425,26 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 	c := &dns.Client{Timeout: 1 * time.Second}
-	addr := net.JoinHostPort(r.iranDNS, "53")
-	resp, _, err := c.Exchange(req, addr)
+	resp, _, err := c.Exchange(req, r.iranAddr)
 	if err != nil || resp == nil {
 		return true
 	}
 	return resp.Rcode != dns.RcodeNameError
 }
 
+func resolveAddr(s string) string {
+	if _, _, err := net.SplitHostPort(s); err != nil {
+		return net.JoinHostPort(s, "53")
+	}
+	return s
+}
+
 func (r *Resolver) IranDNSHealthy() bool {
 	req := new(dns.Msg)
 	req.SetQuestion("nic.ir.", dns.TypeA)
-	addr := net.JoinHostPort(r.iranDNS, "53")
 	c := &dns.Client{Timeout: 2 * time.Second}
 	for i := 0; i < 3; i++ {
-		resp, _, err := c.Exchange(req, addr)
+		resp, _, err := c.Exchange(req, r.iranAddr)
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
 			return true
 		}
@@ -436,7 +452,7 @@ func (r *Resolver) IranDNSHealthy() bool {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
-	r.log.Warn("IranDNS health check failed", "addr", addr)
+	r.log.Warn("IranDNS health check failed", "addr", r.iranAddr)
 	return false
 }
 

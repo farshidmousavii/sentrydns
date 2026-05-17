@@ -118,13 +118,10 @@ if [ "$MODE" = "--check" ]; then
         uptime,
         iran_timeout_pct: (if .iran_query_count > 0 then (.iran_timeouts / .iran_query_count * 100 | floor / 10) else 0 end),
         global_timeout_pct: (if .global_query_count > 0 then (.global_timeouts / .global_query_count * 100 | floor / 10) else 0 end),
-        servfail_rate: (if .queries_total > 0 then (.queries_servfail / .queries_total * 100 | floor / 10) else 0 end),
-        cache_hit_ratio,
         in_flight_queries,
         iran_avg_latency_ms,
         global_avg_latency_ms,
-        global_fallback_count,
-        store_cleaned
+        global_fallback_count
     }'
     exit 0
 fi
@@ -243,17 +240,11 @@ while true; do
         --argjson iran_tp "$iran_timeout_pct" \
         --argjson global_tp "$global_timeout_pct" \
         --argjson inflight "$inflight" \
-        --argjson sf "$servfail_pct" \
         --argjson iran_lat "$iran_avg_lat_ms" \
         --argjson global_lat "$global_avg_lat_ms" \
-        --argjson uptime_sec "$uptime" \
-        --argjson ch "$cache_hit_pct" \
         --argjson gfb "$d_global_fb" \
-        --argjson cleaned "$d_cleaned" \
-        --argjson learned "$d_learned" \
-        --argjson qps "$d_total" \
         --argjson alerts "$alert_json" \
-        '{time: $t, uptime_sec: $uptime_sec, iran_timeout_pct: ($iran_tp | tonumber), global_timeout_pct: ($global_tp | tonumber), in_flight: $inflight, servfail_rate: ($sf | tonumber), iran_avg_latency_ms: ($iran_lat | tonumber), global_avg_latency_ms: ($global_lat | tonumber), cache_hit_pct: ($ch | tonumber), global_fallback_count: $gfb, store_cleaned: $cleaned, learned: $learned, queries_window: $qps, alerts: $alerts}')
+        '{time: $t, uptime_sec: $uptime, iran_timeout_pct: ($iran_tp | tonumber), global_timeout_pct: ($global_tp | tonumber), in_flight: $inflight, iran_avg_latency_ms: ($iran_lat | tonumber), global_avg_latency_ms: ($global_lat | tonumber), global_fallback_count: $gfb, alerts: $alerts}')
 
     echo "$entry" >> "$LOG"
 

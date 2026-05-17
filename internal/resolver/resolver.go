@@ -223,8 +223,13 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	iranCtx, iranCancel := context.WithCancel(ctx)
 	defer iranCancel()
 
-	go func() { globalCh <- r.query(ctx, req.Copy(), r.globalDNS) }()
-	if !r.iranCb.isOpen() {
+	iranOpen := r.iranCb.isOpen()
+	needGlobal := req.Question[0].Qtype == dns.TypeA || req.Question[0].Qtype == dns.TypeAAAA || iranOpen
+
+	if needGlobal {
+		go func() { globalCh <- r.query(ctx, req.Copy(), r.globalDNS) }()
+	}
+	if !iranOpen {
 		go func() { iranCh <- r.queryIranDNS(iranCtx, req.Copy()) }()
 	}
 
@@ -248,10 +253,6 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	if iranMsg != nil {
 		qtype := req.Question[0].Qtype
 		if qtype != dns.TypeA && qtype != dns.TypeAAAA {
-			select {
-			case <-globalCh:
-			default:
-			}
 			r.metrics.QueriesIran.Add(1)
 			return iranMsg
 		}
@@ -263,10 +264,6 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 					r.store.Add(domain)
 					r.metrics.QueriesIran.Add(1)
 					r.log.Info("learned", "domain", domain, "ip", ip)
-					select {
-					case <-globalCh:
-					default:
-					}
 					return iranMsg
 				}
 			}

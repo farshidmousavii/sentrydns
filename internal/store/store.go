@@ -17,6 +17,7 @@ import (
 
 type Store struct {
 	mu          sync.RWMutex
+	ioMu        sync.Mutex
 	domains     map[string]bool
 	file        string
 	log         *slog.Logger
@@ -84,6 +85,9 @@ func (s *Store) Add(domain string) {
 }
 
 func (s *Store) load() error {
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
+
 	f, err := os.Open(s.file)
 	if err != nil {
 		return err
@@ -102,12 +106,18 @@ func (s *Store) load() error {
 }
 
 func (s *Store) persist(domain string) error {
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
+
 	f, err := os.OpenFile(s.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	if _, err := f.WriteString(domain + "\n"); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
 		return err
 	}
 	return nil
@@ -148,6 +158,9 @@ func (s *Store) writeAll() {
 	}
 	s.mu.RUnlock()
 	slices.Sort(domains)
+
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
 
 	f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")
 	if err != nil {

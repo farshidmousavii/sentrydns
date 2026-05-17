@@ -153,11 +153,15 @@ while true; do
     global_lat=$(jq '.global_latency_total // 0' <<< "$data")
     servfail=$(jq '.queries_servfail // 0' <<< "$data")
     total=$(jq '.queries_total // 0' <<< "$data")
+    cached=$(jq '.queries_cached // 0' <<< "$data")
+    global_fb=$(jq '.global_fallback_count // 0' <<< "$data")
+    cleaned=$(jq '.store_cleaned // 0' <<< "$data")
+    learned=$(jq '.learned_total // 0' <<< "$data")
     inflight=$(jq '.in_flight_queries // 0' <<< "$data")
     uptime=$(jq '.uptime // 0' <<< "$data")
 
     now=$(date +%s)
-    SAMPLES+=("$now|$iran_q|$iran_t|$global_q|$global_t|$iran_lat|$global_lat|$servfail|$total")
+    SAMPLES+=("$now|$iran_q|$iran_t|$global_q|$global_t|$iran_lat|$global_lat|$servfail|$total|$cached|$global_fb|$cleaned|$learned")
 
     # prune samples outside window
     cutoff=$((now - WINDOW))
@@ -177,8 +181,8 @@ while true; do
     first="${SAMPLES[0]}"
     last="${SAMPLES[-1]}"
 
-    IFS='|' read -r _ iran_q0 iran_t0 gq0 gt0 il0 gl0 sf0 tot0 <<< "$first"
-    IFS='|' read -r _ iran_q1 iran_t1 gq1 gt1 il1 gl1 sf1 tot1 <<< "$last"
+    IFS='|' read -r _ iran_q0 iran_t0 gq0 gt0 il0 gl0 sf0 tot0 cached0 gfb0 cl0 lrn0 <<< "$first"
+    IFS='|' read -r _ iran_q1 iran_t1 gq1 gt1 il1 gl1 sf1 tot1 cached1 gfb1 cl1 lrn1 <<< "$last"
 
     d_iran_q=$((iran_q1 - iran_q0))
     d_iran_t=$((iran_t1 - iran_t0))
@@ -188,12 +192,17 @@ while true; do
     d_global_lat=$((gl1 - gl0))
     d_servfail=$((sf1 - sf0))
     d_total=$((tot1 - tot0))
+    d_cached=$((cached1 - cached0))
+    d_global_fb=$((gfb1 - gfb0))
+    d_cleaned=$((cl1 - cl0))
+    d_learned=$((lrn1 - lrn0))
 
     iran_timeout_pct=$(awk -v t="$d_iran_t" -v q="$d_iran_q" 'BEGIN{if(q>0) printf "%.1f", t/q*100; else print "0.0"}')
     global_timeout_pct=$(awk -v t="$d_global_t" -v q="$d_global_q" 'BEGIN{if(q>0) printf "%.1f", t/q*100; else print "0.0"}')
     iran_avg_lat_ms=$(awk -v l="$d_iran_lat" -v q="$d_iran_q" 'BEGIN{if(q>0) printf "%.0f", l/q/1e6; else print "0"}')
     global_avg_lat_ms=$(awk -v l="$d_global_lat" -v q="$d_global_q" 'BEGIN{if(q>0) printf "%.0f", l/q/1e6; else print "0"}')
     servfail_pct=$(awk -v s="$d_servfail" -v t="$d_total" 'BEGIN{if(t>0) printf "%.1f", s/t*100; else print "0.0"}')
+    cache_hit_pct=$(awk -v c="$d_cached" -v t="$d_total" 'BEGIN{if(t>0) printf "%.1f", c/t*100; else print "0.0"}')
 
     # track upstream health
     if [ "$d_iran_q" -gt 0 ] || [ "$d_global_q" -gt 0 ]; then
@@ -238,8 +247,13 @@ while true; do
         --argjson iran_lat "$iran_avg_lat_ms" \
         --argjson global_lat "$global_avg_lat_ms" \
         --argjson uptime_sec "$uptime" \
+        --argjson ch "$cache_hit_pct" \
+        --argjson gfb "$d_global_fb" \
+        --argjson cleaned "$d_cleaned" \
+        --argjson learned "$d_learned" \
+        --argjson qps "$d_total" \
         --argjson alerts "$alert_json" \
-        '{time: $t, uptime_sec: $uptime_sec, iran_timeout_pct: ($iran_tp | tonumber), global_timeout_pct: ($global_tp | tonumber), in_flight: $inflight, servfail_rate: ($sf | tonumber), iran_avg_latency_ms: ($iran_lat | tonumber), global_avg_latency_ms: ($global_lat | tonumber), alerts: $alerts}')
+        '{time: $t, uptime_sec: $uptime_sec, iran_timeout_pct: ($iran_tp | tonumber), global_timeout_pct: ($global_tp | tonumber), in_flight: $inflight, servfail_rate: ($sf | tonumber), iran_avg_latency_ms: ($iran_lat | tonumber), global_avg_latency_ms: ($global_lat | tonumber), cache_hit_pct: ($ch | tonumber), global_fallback_count: $gfb, store_cleaned: $cleaned, learned: $learned, queries_window: $qps, alerts: $alerts}')
 
     echo "$entry" >> "$LOG"
 

@@ -108,6 +108,9 @@ func TestUpstreamCounters(t *testing.T) {
 	m.GlobalQueryCount.Add(20)
 	m.GlobalTimeouts.Add(1)
 	m.TcpFallbackCount.Add(3)
+	m.GlobalFallbackCount.Add(4)
+	m.GlobalFallbackLatencyTotal.Add(100_000_000) // 100ms total
+	m.QueriesServfail.Add(5)
 
 	if m.IranQueryCount.Load() != 10 {
 		t.Errorf("IranQueryCount = %d, want 10", m.IranQueryCount.Load())
@@ -123,6 +126,15 @@ func TestUpstreamCounters(t *testing.T) {
 	}
 	if m.TcpFallbackCount.Load() != 3 {
 		t.Errorf("TcpFallbackCount = %d, want 3", m.TcpFallbackCount.Load())
+	}
+	if m.GlobalFallbackCount.Load() != 4 {
+		t.Errorf("GlobalFallbackCount = %d, want 4", m.GlobalFallbackCount.Load())
+	}
+	if m.GlobalFallbackLatencyTotal.Load() != 100_000_000 {
+		t.Errorf("GlobalFallbackLatencyTotal = %d, want 100000000", m.GlobalFallbackLatencyTotal.Load())
+	}
+	if m.QueriesServfail.Load() != 5 {
+		t.Errorf("QueriesServfail = %d, want 5", m.QueriesServfail.Load())
 	}
 }
 
@@ -214,6 +226,9 @@ func TestMetricsHandler(t *testing.T) {
 	m.GlobalQueryCount.Store(20)
 	m.GlobalTimeouts.Store(1)
 	m.TcpFallbackCount.Store(3)
+	m.GlobalFallbackCount.Store(4)
+	m.GlobalFallbackLatencyTotal.Store(100_000_000)
+	m.QueriesServfail.Store(5)
 	m.StoreRemoved.Store(5)
 	m.StoreCleaned.Store(40)
 	m.InFlightQueries.Store(4)
@@ -262,6 +277,9 @@ func TestMetricsHandler(t *testing.T) {
 		{"global_avg_latency_ms", 10},
 		{"global_timeouts", 1},
 		{"tcp_fallback_count", 3},
+		{"global_fallback_count", 4},
+		{"global_fallback_avg_latency_ms", 25},
+		{"queries_servfail", 5},
 		{"in_flight_queries", 4},
 	}
 

@@ -1,0 +1,25 @@
+[Unit]
+Description=SentryDNS Diagnostic Probe — threshold watcher & metrics logger
+Documentation=https://github.com/farshidmousavii/sentrydns
+After=network.target sentrydns.service
+BindsTo=sentrydns.service
+PartOf=sentrydns.service
+
+[Service]
+Type=simple
+ExecStart=/opt/sentrydns/sentrydps.sh
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+User=root
+Group=root
+LimitNOFILE=4096
+
+# Security hardening
+ProtectSystem=strict
+ReadWritePaths=/var/log/sentrydns /var/run
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

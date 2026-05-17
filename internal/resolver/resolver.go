@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,10 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/sync/singleflight"
 )
+
+var dnsClientPool = sync.Pool{
+	New: func() interface{} { return &dns.Client{} },
+}
 
 type cbState int32
 
@@ -405,7 +410,10 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 	if !isIran && r.globalTimeout.Load() > 0 {
 		timeout = time.Duration(r.globalTimeout.Load())
 	}
-	c := &dns.Client{Timeout: timeout}
+	c := dnsClientPool.Get().(*dns.Client)
+	c.Timeout = timeout
+	c.Net = "udp"
+	defer dnsClientPool.Put(c)
 
 	addr := r.iranAddr
 	if !isIran {
@@ -448,7 +456,11 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 				fbAddr = net.JoinHostPort(r.globalDNSFallback, "53")
 			}
 			fbStart := time.Now()
-			fbResp, _, fbErr := (&dns.Client{Timeout: timeout}).Exchange(req, fbAddr)
+			fbC := dnsClientPool.Get().(*dns.Client)
+			fbC.Timeout = timeout
+			fbC.Net = "udp"
+			fbResp, _, fbErr := fbC.Exchange(req, fbAddr)
+			dnsClientPool.Put(fbC)
 			if fbErr == nil {
 				r.metrics.GlobalFallbackCount.Add(1)
 				r.metrics.GlobalFallbackLatencyTotal.Add(int64(time.Since(fbStart)))
@@ -460,10 +472,11 @@ func (r *Resolver) query(req *dns.Msg, upstream string) *dns.Msg {
 
 	if resp.Truncated {
 		r.metrics.TcpFallbackCount.Add(1)
-		tcpResp, _, err := (&dns.Client{
-			Timeout: timeout,
-			Net:     "tcp",
-		}).Exchange(req, addr)
+		tcpC := dnsClientPool.Get().(*dns.Client)
+		tcpC.Timeout = timeout
+		tcpC.Net = "tcp"
+		tcpResp, _, err := tcpC.Exchange(req, addr)
+		dnsClientPool.Put(tcpC)
 		if err == nil {
 			return tcpResp
 		}

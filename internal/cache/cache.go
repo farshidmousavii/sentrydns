@@ -99,18 +99,9 @@ func (c *Cache) Set(req *dns.Msg, resp *dns.Msg) {
 }
 
 func (c *Cache) evictOne() {
-	var evictKey string
-	var nearestExpiry time.Time
-	first := true
-	for k, e := range c.entries {
-		if first || e.expires.Before(nearestExpiry) {
-			evictKey = k
-			nearestExpiry = e.expires
-			first = false
-		}
-	}
-	if evictKey != "" {
-		delete(c.entries, evictKey)
+	for k := range c.entries {
+		delete(c.entries, k)
+		return
 	}
 }
 

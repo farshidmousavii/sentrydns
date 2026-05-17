@@ -75,7 +75,9 @@ func (s *Store) Add(domain string) {
 		s.metrics.LearnedTotal.Add(1)
 		s.metrics.LearnedToday.Add(1)
 	}
-	s.persist(domain)
+	if err := s.persist(domain); err != nil {
+		s.log.Error("failed to persist learned domain", "domain", domain, "error", err)
+	}
 	if s.metrics != nil && s.metrics.LearnedTotal.Load()%50 == 0 {
 		s.saveLearnedToday()
 	}
@@ -99,16 +101,16 @@ func (s *Store) load() error {
 	return scanner.Err()
 }
 
-func (s *Store) persist(domain string) {
+func (s *Store) persist(domain string) error {
 	f, err := os.OpenFile(s.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		s.log.Error("failed to open file for persist", "error", err)
-		return
+		return err
 	}
 	defer f.Close()
 	if _, err := f.WriteString(domain + "\n"); err != nil {
-		s.log.Error("failed to write domain", "domain", domain, "error", err)
+		return err
 	}
+	return nil
 }
 
 func normalize(domain string) string {

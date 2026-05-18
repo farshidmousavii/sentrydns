@@ -1,0 +1,41 @@
+iran_dns: "172.16.0.25"
+global_dns: "172.16.0.24"
+listen: ":53"
+min_ttl: 300
+max_ttl: 3600
+iran_ranges: "data/iran-ranges.txt"
+learned: "data/learned.conf"
+iran_dns_timeout: 3
+global_dns_timeout: 5
+log_level: "info" # debug, info, warn, error
+log_format: "json" # json, text
+log_file: "/var/log/sentrydns/sentrydns.log"
+metrics_addr: ":9153"
+
+iran_tlds:
+  - "ir"
+  - "ایران"
+
+hijack_ips:
+  - "10.10.34.34"
+  - "10.10.34.35"
+  - "10.10.34.36"
+
+hijack_ranges:
+  - "50.7.0.0/16"
+
+prefer_iran_domains:
+  - "google.com"
+  - "googleapis.com"
+  - "gstatic.com"
+  - "gmail.com"
+  - "googleusercontent.com"
+
+#iran_ranges_url: "https://raw.githubusercontent.com/farshidmousavii/iran-ip/main/ipv4.txt"
+# self-hosted:
+iran_ranges_url: "http://172.16.5.77:8080/ipv4.txt"
+iran_ranges_update_interval: 24h
+
+# cleanup validates stored domains, delayed to let upstreams stabilize
+cleanup_initial_delay: 1h
+cleanup_qps: 100

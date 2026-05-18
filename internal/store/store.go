@@ -12,18 +12,24 @@ import (
 	"time"
 
 	"github.com/farshidmousavii/sentrydns/internal/metrics"
-	"github.com/farshidmousavii/sentrydns/internal/state"
+	statepkg "github.com/farshidmousavii/sentrydns/internal/state"
 )
 
 type Store struct {
-	mu          sync.RWMutex
-	ioMu        sync.Mutex
-	domains     map[string]bool
-	file        string
-	log         *slog.Logger
-	metrics     *metrics.Metrics
-	statePath   string
-	stopCleanup chan struct{}
+	mu           sync.RWMutex
+	ioMu         sync.Mutex
+	domains      map[string]bool
+	file         string
+	log          *slog.Logger
+	metrics      *metrics.Metrics
+	statePath    string
+	stopCleanup  chan struct{}
+	persistBuf   []string
+	persistMu    sync.Mutex
+	stateBuf     atomic.Pointer[statepkg.State]
+	stateDirty   atomic.Bool
+	stateTimerMu sync.Mutex
+	stateTimer   *time.Timer
 }
 
 func New(file string, log *slog.Logger, m *metrics.Metrics, statePath string) (*Store, error) {
@@ -34,12 +40,14 @@ func New(file string, log *slog.Logger, m *metrics.Metrics, statePath string) (*
 		metrics:     m,
 		statePath:   statePath,
 		stopCleanup: make(chan struct{}),
+		persistBuf:  make([]string, 0, 64),
 	}
 
 	if err := s.load(); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 
+	go s.persistFlusher()
 	return s, nil
 }
 
@@ -76,9 +84,7 @@ func (s *Store) Add(domain string) {
 		s.metrics.LearnedTotal.Add(1)
 		s.metrics.LearnedToday.Add(1)
 	}
-	if err := s.persist(domain); err != nil {
-		s.log.Error("failed to persist learned domain", "domain", domain, "error", err)
-	}
+	s.persist(domain)
 	if s.metrics != nil && s.metrics.LearnedTotal.Load()%50 == 0 {
 		s.saveLearnedToday()
 	}
@@ -105,22 +111,48 @@ func (s *Store) load() error {
 	return scanner.Err()
 }
 
-func (s *Store) persist(domain string) error {
-	s.ioMu.Lock()
-	defer s.ioMu.Unlock()
+func (s *Store) persist(domain string) {
+	s.persistMu.Lock()
+	s.persistBuf = append(s.persistBuf, domain)
+	s.persistMu.Unlock()
+}
 
+func (s *Store) persistFlusher() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.flushPersist()
+		case <-s.stopCleanup:
+			s.flushPersist()
+			return
+		}
+	}
+}
+
+func (s *Store) flushPersist() {
+	s.persistMu.Lock()
+	if len(s.persistBuf) == 0 {
+		s.persistMu.Unlock()
+		return
+	}
+	domains := s.persistBuf
+	s.persistBuf = make([]string, 0, 64)
+	s.persistMu.Unlock()
+
+	s.ioMu.Lock()
 	f, err := os.OpenFile(s.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		s.ioMu.Unlock()
+		return
 	}
-	defer f.Close()
-	if _, err := f.WriteString(domain + "\n"); err != nil {
-		return err
+	for _, d := range domains {
+		f.WriteString(d + "\n")
 	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	return nil
+	f.Sync()
+	f.Close()
+	s.ioMu.Unlock()
 }
 
 func normalize(domain string) string {
@@ -147,7 +179,7 @@ func (s *Store) Remove(domain string) {
 	if s.metrics != nil {
 		s.metrics.StoreRemoved.Add(1)
 	}
-	s.writeAll()
+	go s.writeAllAsync()
 }
 
 func (s *Store) writeAll() {
@@ -190,6 +222,37 @@ func (s *Store) writeAll() {
 	}
 }
 
+func (s *Store) writeAllAsync() {
+	go func() {
+		s.mu.RLock()
+		domains := make([]string, 0, len(s.domains))
+		for d := range s.domains {
+			domains = append(domains, d)
+		}
+		s.mu.RUnlock()
+		slices.Sort(domains)
+
+		s.ioMu.Lock()
+		f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")
+		if err != nil {
+			s.ioMu.Unlock()
+			s.log.Error("failed to create temp file for writeAllAsync", "error", err)
+			return
+		}
+		tmpPath := f.Name()
+		for _, d := range domains {
+			f.WriteString(d + "\n")
+		}
+		f.Sync()
+		f.Close()
+		if err := os.Rename(tmpPath, s.file); err != nil {
+			s.log.Error("failed to rename temp file for writeAllAsync", "error", err)
+		}
+		os.Remove(tmpPath)
+		s.ioMu.Unlock()
+	}()
+}
+
 func (s *Store) StartCleanup(initialDelay time.Duration, qps int, validate func(string) bool, healthCheck func() bool, nextDelay func() time.Duration) {
 	go func() {
 		s.log.Info("cleanup initial delay", "delay", initialDelay.Round(time.Second))
@@ -227,7 +290,7 @@ func (s *Store) saveCleanupTime() {
 	if s.statePath == "" {
 		return
 	}
-	state.Update(s.statePath, func(st *state.State) {
+	statepkg.Update(s.statePath, func(st *statepkg.State) {
 		st.LastCleanupUnix = time.Now().Unix()
 	})
 }
@@ -236,11 +299,80 @@ func (s *Store) saveLearnedToday() {
 	if s.statePath == "" || s.metrics == nil {
 		return
 	}
-	state.Update(s.statePath, func(st *state.State) {
-		st.LearnedTodayDate = time.Now().Format("2006-01-02")
-		st.LearnedTodayCount = s.metrics.LearnedToday.Load()
+	st := &statepkg.State{
+		LearnedTodayDate:  time.Now().Format("2006-01-02"),
+		LearnedTodayCount: s.metrics.LearnedToday.Load(),
+		LearnedTotalCount: s.metrics.LearnedTotal.Load(),
+	}
+	s.saveStateSoon(st)
+}
+
+func (s *Store) markStateDirty() {
+	if s.statePath == "" {
+		return
+	}
+	s.stateDirty.Store(true)
+	s.scheduleStateFlush()
+}
+
+func (s *Store) saveStateSoon(st *statepkg.State) {
+	if s.statePath == "" {
+		return
+	}
+	s.stateBuf.Store(st)
+	s.scheduleStateFlush()
+}
+
+func (s *Store) scheduleStateFlush() {
+	s.stateTimerMu.Lock()
+	defer s.stateTimerMu.Unlock()
+	if s.stateTimer == nil {
+		s.stateTimer = time.NewTimer(10 * time.Second)
+	} else {
+		s.stateTimer.Reset(10 * time.Second)
+	}
+	go s.flushStateLoop()
+}
+
+func (s *Store) flushStateLoop() {
+	s.stateTimerMu.Lock()
+	if s.stateTimer == nil {
+		s.stateTimerMu.Unlock()
+		return
+	}
+	t := s.stateTimer
+	s.stateTimerMu.Unlock()
+
+	select {
+	case <-t.C:
+		s.flushState()
+	case <-s.stopCleanup:
+		s.flushState()
+		return
+	}
+}
+
+func (s *Store) flushState() {
+	if !s.stateDirty.Load() && s.stateBuf.Load() == nil {
+		return
+	}
+	st := s.stateBuf.Load()
+	if st == nil {
+		st = &statepkg.State{}
+	}
+	if s.metrics != nil && st.LearnedTotalCount == 0 {
 		st.LearnedTotalCount = s.metrics.LearnedTotal.Load()
+	}
+	statepkg.Update(s.statePath, func(s2 *statepkg.State) {
+		if st.LearnedTotalCount > 0 {
+			s2.LearnedTotalCount = st.LearnedTotalCount
+		}
+		if st.LearnedTodayCount > 0 {
+			s2.LearnedTodayCount = st.LearnedTodayCount
+			s2.LearnedTodayDate = st.LearnedTodayDate
+		}
 	})
+	s.stateDirty.Store(false)
 }
 
 func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck func() bool) {

@@ -11,17 +11,27 @@ type clientState struct {
 }
 
 type Limiter struct {
-	mu      sync.Mutex
-	clients map[string]*clientState
-	MaxRPS  int
-	window  time.Duration
-	stopCh  chan struct{}
-	once    sync.Once
+	shards    []shard
+	MaxRPS    int
+	window    time.Duration
+	stopCh    chan struct{}
+	once      sync.Once
 }
 
+type shard struct {
+	mu      sync.Mutex
+	clients map[string]*clientState
+}
+
+const numShards = 16
+
 func New(maxRPS int) *Limiter {
+	shards := make([]shard, numShards)
+	for i := range shards {
+		shards[i] = shard{clients: make(map[string]*clientState)}
+	}
 	l := &Limiter{
-		clients: make(map[string]*clientState),
+		shards:  shards,
 		MaxRPS:  maxRPS,
 		window:  time.Second,
 		stopCh:  make(chan struct{}),
@@ -32,18 +42,27 @@ func New(maxRPS int) *Limiter {
 	return l
 }
 
+func (l *Limiter) shardFor(ip string) *shard {
+	h := 0
+	for _, c := range ip {
+		h = h*31 + int(c)
+	}
+	return &l.shards[(h^(len(l.shards)-1))%len(l.shards)]
+}
+
 func (l *Limiter) Allow(ip string) bool {
 	if l.MaxRPS <= 0 {
 		return true
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	s := l.shardFor(ip)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	now := time.Now()
-	cs, ok := l.clients[ip]
+	cs, ok := s.clients[ip]
 	if !ok || now.Sub(cs.windowStart) > l.window {
-		l.clients[ip] = &clientState{windowStart: now, count: 1}
+		s.clients[ip] = &clientState{windowStart: now, count: 1}
 		return true
 	}
 
@@ -57,14 +76,17 @@ func (l *Limiter) cleanup() {
 	for {
 		select {
 		case <-ticker.C:
-			l.mu.Lock()
 			now := time.Now()
-			for ip, cs := range l.clients {
-				if now.Sub(cs.windowStart) > 2*l.window {
-					delete(l.clients, ip)
+			for i := range l.shards {
+				s := &l.shards[i]
+				s.mu.Lock()
+				for ip, cs := range s.clients {
+					if now.Sub(cs.windowStart) > 2*l.window {
+						delete(s.clients, ip)
+					}
 				}
+				s.mu.Unlock()
 			}
-			l.mu.Unlock()
 		case <-l.stopCh:
 			return
 		}

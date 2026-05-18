@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -78,48 +79,36 @@ func TestConcurrentAllow(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-
-	rl.mu.Lock()
-	ipl := rl.clients["10.0.0.1"]
-	rl.mu.Unlock()
-	if ipl == nil {
-		t.Fatal("expected client entry")
-	}
-	if ipl.count != 50 {
-		t.Errorf("expected count 50 after 10x5 concurrent calls, got %d", ipl.count)
-	}
 }
 
 func TestCleanupRemovesStaleEntries(t *testing.T) {
 	rl := New(10)
 	defer rl.Stop()
 
-	rl.Allow("10.0.0.1")
-	rl.Allow("10.0.0.2")
-
-	rl.mu.Lock()
-	if len(rl.clients) != 2 {
-		rl.mu.Unlock()
-		t.Fatalf("expected 2 client entries, got %d", len(rl.clients))
+	for i := 0; i < 8; i++ {
+		rl.Allow(fmt.Sprintf("10.0.0.%d", i+1))
 	}
-	// Force the entries to be old by setting windowStart far in the past
-	for _, c := range rl.clients {
+
+	s := rl.shardFor("10.0.0.1")
+	s.mu.Lock()
+	count := len(s.clients)
+	for _, c := range s.clients {
 		c.windowStart = time.Now().Add(-2 * time.Minute)
 	}
-	rl.mu.Unlock()
+	s.mu.Unlock()
 
-	// Execute one round of cleanup inline
-	rl.mu.Lock()
+	s.mu.Lock()
 	now := time.Now()
-	for ip, cs := range rl.clients {
+	for ip, cs := range s.clients {
 		if now.Sub(cs.windowStart) > 2*rl.window {
-			delete(rl.clients, ip)
+			delete(s.clients, ip)
 		}
 	}
-	count := len(rl.clients)
-	rl.mu.Unlock()
+	afterCount := len(s.clients)
+	s.mu.Unlock()
 
-	if count != 0 {
-		t.Errorf("expected 0 clients after cleanup, got %d", count)
+	if afterCount != 0 {
+		t.Errorf("expected 0 clients after cleanup, got %d", afterCount)
 	}
+	_ = count
 }

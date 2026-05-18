@@ -113,7 +113,9 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 	}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
 	}
 }
 

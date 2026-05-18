@@ -11,7 +11,6 @@ import (
 
 type Classifier struct {
 	mu          sync.RWMutex
-	iranRanges  []netip.Prefix
 	iranRanges4 []netip.Prefix
 	iranRanges6 []netip.Prefix
 }
@@ -35,7 +34,6 @@ func New(rangesFile string) (*Classifier, error) {
 		if err != nil {
 			continue
 		}
-		c.iranRanges = append(c.iranRanges, prefix)
 		if prefix.Addr().Is4() {
 			c.iranRanges4 = append(c.iranRanges4, prefix)
 		} else {
@@ -45,18 +43,16 @@ func New(rangesFile string) (*Classifier, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("error reading %s: %w", rangesFile, err)
 	}
-	if len(c.iranRanges) == 0 {
+	if len(c.iranRanges4)+len(c.iranRanges6) == 0 {
 		return nil, fmt.Errorf("no valid CIDR ranges found in %s", rangesFile)
 	}
-	sortRanges(c.iranRanges4)
-	sortRanges(c.iranRanges6)
-	return c, nil
-}
-
-func sortRanges(ranges []netip.Prefix) {
-	slices.SortFunc(ranges, func(a, b netip.Prefix) int {
-		return a.Bits() - b.Bits()
+	slices.SortFunc(c.iranRanges4, func(a, b netip.Prefix) int {
+		return b.Bits() - a.Bits()
 	})
+	slices.SortFunc(c.iranRanges6, func(a, b netip.Prefix) int {
+		return b.Bits() - a.Bits()
+	})
+	return c, nil
 }
 
 func (c *Classifier) IsIran(ipStr string) bool {
@@ -70,8 +66,8 @@ func (c *Classifier) IsIran(ipStr string) bool {
 	if ip.Is4() {
 		ranges = c.iranRanges4
 	}
-	for _, network := range ranges {
-		if network.Contains(ip) {
+	for _, p := range ranges {
+		if p.Contains(ip) {
 			return true
 		}
 	}
@@ -86,7 +82,6 @@ func (c *Classifier) Reload(path string) error {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.iranRanges = newC.iranRanges
 	c.iranRanges4 = newC.iranRanges4
 	c.iranRanges6 = newC.iranRanges6
 	return nil

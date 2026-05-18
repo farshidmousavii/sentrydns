@@ -46,7 +46,7 @@ type circuitBreaker struct {
 	failures      atomic.Int32
 	threshold     int32
 	lastOpen      atomic.Int64
-	cooldown      time.Duration
+	cooldown      atomic.Int64
 	onStateChange func(cbState)
 }
 
@@ -83,11 +83,11 @@ func (cb *circuitBreaker) isOpen() bool {
 	if cb.state.Load() != int32(cbOpen) {
 		return false
 	}
-	if time.Since(time.Unix(0, cb.lastOpen.Load())) > cb.cooldown {
-		cb.state.CompareAndSwap(int32(cbOpen), int32(cbHalfOpen))
-		return false
+	if time.Since(time.Unix(0, cb.lastOpen.Load())) <= time.Duration(cb.cooldown.Load()) {
+		return true
 	}
-	return true
+	cb.state.CompareAndSwap(int32(cbOpen), int32(cbHalfOpen))
+	return false
 }
 
 func ServerFail(req *dns.Msg) *dns.Msg {
@@ -118,9 +118,13 @@ type Resolver struct {
 	iranCb            *circuitBreaker
 	iranAddr          string
 	globalAddr        string
+	wg                sync.WaitGroup
+	stopped           atomic.Bool
+	stopCh            chan struct{}
+	active            atomic.Int64
 }
 
-func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string, cacheMaxEntries int) *Resolver {
+func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string, cacheMaxEntries int, cbThreshold int, cbCooldown time.Duration) *Resolver {
 	tlds := make(map[string]bool)
 	for _, t := range iranTLDs {
 		tlds[strings.ToLower(t)] = true
@@ -160,8 +164,8 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		iranAddr:          resolveAddr(iranDNS),
 		globalAddr:        resolveAddr(globalDNS),
 		iranCb: &circuitBreaker{
-			threshold: 5,
-			cooldown:  30 * time.Second,
+			threshold: int32(cbThreshold),
+			cooldown:  atomic.Int64{},
 			onStateChange: func(s cbState) {
 				switch s {
 				case cbOpen:
@@ -172,7 +176,9 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 				}
 			},
 		},
+		stopCh: make(chan struct{}),
 	}
+	r.iranCb.cooldown.Store(int64(cbCooldown))
 	r.timeout.Store(int64(3 * time.Second))
 	r.globalTimeout.Store(int64(1500 * time.Millisecond))
 	return r
@@ -286,10 +292,14 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 		}
 
 		waitTimer := time.NewTimer(shortWait)
+		defer waitTimer.Stop()
 		select {
 		case msg := <-globalCh:
 			if !waitTimer.Stop() {
-				<-waitTimer.C
+				select {
+				case <-waitTimer.C:
+				default:
+				}
 			}
 			globalMsg = msg
 		case <-waitTimer.C:
@@ -308,10 +318,14 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	if globalMsg != nil {
 		if !iranOpen {
 			waitTimer := time.NewTimer(shortWait)
+			defer waitTimer.Stop()
 			select {
 			case msg := <-iranCh:
 				if !waitTimer.Stop() {
-					<-waitTimer.C
+					select {
+					case <-waitTimer.C:
+					default:
+					}
 				}
 				iranMsg = msg
 				if iranMsg != nil {
@@ -337,7 +351,17 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 }
 
 func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
+	if r.stopped.Load() {
+		return ServerFail(req)
+	}
+	select {
+	case <-r.stopCh:
+		return ServerFail(req)
+	default:
+	}
 	r.metrics.InFlightQueries.Add(1)
+	r.active.Add(1)
+	defer r.active.Add(-1)
 	defer r.metrics.InFlightQueries.Add(-1)
 
 	if req == nil {
@@ -634,6 +658,15 @@ func (r *Resolver) SetGlobalTimeout(d time.Duration) {
 	r.globalTimeout.Store(int64(d))
 }
 
+func (r *Resolver) SetCBCooldown(d time.Duration) {
+	r.iranCb.cooldown.Store(int64(d))
+}
+
 func (r *Resolver) Stop() {
+	r.stopped.Store(true)
+	close(r.stopCh)
+	for r.active.Load() > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
 	r.cache.Stop()
 }

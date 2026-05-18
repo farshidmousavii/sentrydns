@@ -35,6 +35,8 @@ type Config struct {
 	CleanupSchedule          string   `yaml:"cleanup_schedule"`
 	CacheMaxEntries          int      `yaml:"cache_max_entries"`
 	RateLimitPerClient       int      `yaml:"rate_limit_per_client"`
+	IranCBThreshold          int      `yaml:"iran_cb_threshold"`
+	IranCBCooldown           string   `yaml:"iran_cb_cooldown"`
 }
 
 func defaultConfig() Config {
@@ -62,6 +64,8 @@ func defaultConfig() Config {
 		CleanupSchedule:          "02:00",
 		CacheMaxEntries:          100000,
 		RateLimitPerClient:       0,
+		IranCBThreshold:          5,
+		IranCBCooldown:           "30s",
 	}
 }
 

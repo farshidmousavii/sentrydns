@@ -47,8 +47,8 @@ global_dns: "8.8.8.8"
 	if cfg.Learned != "data/learned.conf" {
 		t.Errorf("Learned = %q, want %q", cfg.Learned, "data/learned.conf")
 	}
-	if cfg.Timeout != 3 {
-		t.Errorf("Timeout = %d, want %d", cfg.Timeout, 3)
+	if cfg.IranDNSTimeout != 3 {
+		t.Errorf("IranDNSTimeout = %d, want %d", cfg.IranDNSTimeout, 3)
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, "info")
@@ -83,7 +83,7 @@ func TestLoadPartialConfig(t *testing.T) {
 	yaml := `
 listen: ":9999"
 min_ttl: 600
-timeout: 5
+iran_dns_timeout: 5
 iran_dns: "10.0.0.1"
 global_dns: "8.8.8.8"
 `
@@ -99,8 +99,8 @@ global_dns: "8.8.8.8"
 	if cfg.MinTTL != 600 {
 		t.Errorf("MinTTL = %d, want %d", cfg.MinTTL, 600)
 	}
-	if cfg.Timeout != 5 {
-		t.Errorf("Timeout = %d, want %d", cfg.Timeout, 5)
+	if cfg.IranDNSTimeout != 5 {
+		t.Errorf("IranDNSTimeout = %d, want %d", cfg.IranDNSTimeout, 5)
 	}
 	if cfg.MaxTTL != 3600 {
 		t.Errorf("MaxTTL = %d, want %d", cfg.MaxTTL, 3600)
@@ -119,7 +119,7 @@ min_ttl: 100
 max_ttl: 5000
 iran_ranges: "/etc/dns/iran.txt"
 learned: "/var/dns/learned.conf"
-timeout: 5
+iran_dns_timeout: 5
 log_level: "debug"
 log_format: "text"
 log_file: "/tmp/test.log"

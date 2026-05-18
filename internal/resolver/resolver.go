@@ -221,12 +221,14 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 
 	iranCtx, iranCancel := context.WithCancel(ctx)
 	defer iranCancel()
+	globalCtx, globalCancel := context.WithCancel(ctx)
+	defer globalCancel()
 
 	iranOpen := r.iranCb.isOpen()
 	needGlobal := req.Question[0].Qtype == dns.TypeA || req.Question[0].Qtype == dns.TypeAAAA || iranOpen
 
 	if needGlobal {
-		go func() { globalCh <- r.query(ctx, req.Copy(), r.globalDNS) }()
+		go func() { globalCh <- r.query(globalCtx, req.Copy(), r.globalDNS) }()
 	}
 	if !iranOpen {
 		go func() { iranCh <- r.queryIranDNS(iranCtx, req.Copy()) }()
@@ -246,6 +248,7 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 		iranMsg = msg
 	case msg := <-globalCh:
 		iranCancel()
+		globalCancel()
 		globalMsg = msg
 	case <-ctx.Done():
 		return ServerFail(req)
@@ -254,6 +257,7 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	if iranMsg != nil {
 		qtype := req.Question[0].Qtype
 		if qtype != dns.TypeA && qtype != dns.TypeAAAA {
+			globalCancel()
 			r.metrics.QueriesIran.Add(1)
 			return iranMsg
 		}
@@ -265,6 +269,7 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 					r.store.Add(domain)
 					r.metrics.QueriesIran.Add(1)
 					r.log.Info("learned", "domain", domain, "ip", ip)
+					globalCancel()
 					return iranMsg
 				}
 			}
@@ -521,8 +526,8 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 			fbC.Timeout = timeout
 			fbC.Net = "udp"
 			fbCtx, fbCancel := context.WithTimeout(ctx, timeout)
-			defer fbCancel()
 			fbResp, _, fbErr := fbC.ExchangeContext(fbCtx, req, fbAddr)
+			fbCancel()
 			dnsClientPool.Put(fbC)
 			if fbErr == nil {
 				r.metrics.GlobalFallbackCount.Add(1)
@@ -538,7 +543,9 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 		tcpC := dnsClientPool.Get().(*dns.Client)
 		tcpC.Timeout = timeout
 		tcpC.Net = "tcp"
-		tcpResp, _, err := tcpC.ExchangeContext(dnsCtx, req, addr)
+		tcpCtx, tcpCancel := context.WithTimeout(ctx, timeout)
+		tcpResp, _, err := tcpC.ExchangeContext(tcpCtx, req, addr)
+		tcpCancel()
 		dnsClientPool.Put(tcpC)
 		if err == nil {
 			return tcpResp

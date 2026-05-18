@@ -25,11 +25,16 @@ type Store struct {
 	statePath    string
 	stopCleanup  chan struct{}
 	persistBuf   []string
+	persistBufGen uint64
 	persistMu    sync.Mutex
-	stateBuf     atomic.Pointer[statepkg.State]
-	stateDirty   atomic.Bool
-	stateTimerMu sync.Mutex
-	stateTimer   *time.Timer
+	writeGen     atomic.Uint64
+
+	flushMu    sync.Mutex
+	flushBuf   *statepkg.State
+	flushTimer *time.Timer
+
+	rewriteTimer   *time.Timer
+	rewriteTimerMu sync.Mutex
 }
 
 func New(file string, log *slog.Logger, m *metrics.Metrics, statePath string) (*Store, error) {
@@ -114,6 +119,7 @@ func (s *Store) load() error {
 func (s *Store) persist(domain string) {
 	s.persistMu.Lock()
 	s.persistBuf = append(s.persistBuf, domain)
+	s.persistBufGen = s.writeGen.Load()
 	s.persistMu.Unlock()
 }
 
@@ -138,10 +144,18 @@ func (s *Store) flushPersist() {
 		return
 	}
 	domains := s.persistBuf
+	bufGen := s.persistBufGen
 	s.persistBuf = make([]string, 0, 64)
+	s.persistBufGen = 0
 	s.persistMu.Unlock()
 
 	s.ioMu.Lock()
+	// If writeAll rewrote the file since we drained the buffer,
+	// the domains are already included in the new file — skip.
+	if s.writeGen.Load() != bufGen {
+		s.ioMu.Unlock()
+		return
+	}
 	f, err := os.OpenFile(s.file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		s.ioMu.Unlock()
@@ -179,10 +193,15 @@ func (s *Store) Remove(domain string) {
 	if s.metrics != nil {
 		s.metrics.StoreRemoved.Add(1)
 	}
-	go s.writeAllAsync()
+	s.scheduleRewrite()
 }
 
 func (s *Store) writeAll() {
+	s.ioMu.Lock()
+	defer s.ioMu.Unlock()
+
+	s.writeGen.Add(1)
+
 	s.mu.RLock()
 	domains := make([]string, 0, len(s.domains))
 	for d := range s.domains {
@@ -190,9 +209,6 @@ func (s *Store) writeAll() {
 	}
 	s.mu.RUnlock()
 	slices.Sort(domains)
-
-	s.ioMu.Lock()
-	defer s.ioMu.Unlock()
 
 	f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")
 	if err != nil {
@@ -222,35 +238,13 @@ func (s *Store) writeAll() {
 	}
 }
 
-func (s *Store) writeAllAsync() {
-	go func() {
-		s.mu.RLock()
-		domains := make([]string, 0, len(s.domains))
-		for d := range s.domains {
-			domains = append(domains, d)
-		}
-		s.mu.RUnlock()
-		slices.Sort(domains)
-
-		s.ioMu.Lock()
-		f, err := os.CreateTemp(filepath.Dir(s.file), "learned-*.tmp")
-		if err != nil {
-			s.ioMu.Unlock()
-			s.log.Error("failed to create temp file for writeAllAsync", "error", err)
-			return
-		}
-		tmpPath := f.Name()
-		for _, d := range domains {
-			f.WriteString(d + "\n")
-		}
-		f.Sync()
-		f.Close()
-		if err := os.Rename(tmpPath, s.file); err != nil {
-			s.log.Error("failed to rename temp file for writeAllAsync", "error", err)
-		}
-		os.Remove(tmpPath)
-		s.ioMu.Unlock()
-	}()
+func (s *Store) scheduleRewrite() {
+	s.rewriteTimerMu.Lock()
+	defer s.rewriteTimerMu.Unlock()
+	if s.rewriteTimer != nil {
+		s.rewriteTimer.Stop()
+	}
+	s.rewriteTimer = time.AfterFunc(500*time.Millisecond, s.writeAll)
 }
 
 func (s *Store) StartCleanup(initialDelay time.Duration, qps int, validate func(string) bool, healthCheck func() bool, nextDelay func() time.Duration) {
@@ -307,59 +301,33 @@ func (s *Store) saveLearnedToday() {
 	s.saveStateSoon(st)
 }
 
-func (s *Store) markStateDirty() {
-	if s.statePath == "" {
-		return
-	}
-	s.stateDirty.Store(true)
-	s.scheduleStateFlush()
-}
-
 func (s *Store) saveStateSoon(st *statepkg.State) {
 	if s.statePath == "" {
 		return
 	}
-	s.stateBuf.Store(st)
-	s.scheduleStateFlush()
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+	s.flushBuf = st
+	s.scheduleFlushLocked()
 }
 
-func (s *Store) scheduleStateFlush() {
-	s.stateTimerMu.Lock()
-	defer s.stateTimerMu.Unlock()
-	if s.stateTimer == nil {
-		s.stateTimer = time.NewTimer(10 * time.Second)
-	} else {
-		s.stateTimer.Reset(10 * time.Second)
+func (s *Store) scheduleFlushLocked() {
+	if s.flushTimer != nil {
+		s.flushTimer.Stop()
 	}
-	go s.flushStateLoop()
-}
-
-func (s *Store) flushStateLoop() {
-	s.stateTimerMu.Lock()
-	if s.stateTimer == nil {
-		s.stateTimerMu.Unlock()
-		return
-	}
-	t := s.stateTimer
-	s.stateTimerMu.Unlock()
-
-	select {
-	case <-t.C:
-		s.flushState()
-	case <-s.stopCleanup:
-		s.flushState()
-		return
-	}
+	s.flushTimer = time.AfterFunc(10*time.Second, s.flushState)
 }
 
 func (s *Store) flushState() {
-	if !s.stateDirty.Load() && s.stateBuf.Load() == nil {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+
+	if s.flushBuf == nil {
 		return
 	}
-	st := s.stateBuf.Load()
-	if st == nil {
-		st = &statepkg.State{}
-	}
+
+	st := s.flushBuf
+	s.flushBuf = nil
 	if s.metrics != nil && st.LearnedTotalCount == 0 {
 		st.LearnedTotalCount = s.metrics.LearnedTotal.Load()
 	}
@@ -372,7 +340,6 @@ func (s *Store) flushState() {
 			s2.LearnedTodayDate = st.LearnedTodayDate
 		}
 	})
-	s.stateDirty.Store(false)
 }
 
 func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck func() bool) {
@@ -477,6 +444,14 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 
 	s.writeAll()
 
+	// Cancel any pending rewrite from a concurrent Remove() during cleanup.
+	// The rewrite would be redundant since writeAll already wrote the current state.
+	s.rewriteTimerMu.Lock()
+	if s.rewriteTimer != nil {
+		s.rewriteTimer.Stop()
+	}
+	s.rewriteTimerMu.Unlock()
+
 	s.log.Info("cleanup finished",
 		"total", total,
 		"removed", removed,
@@ -491,5 +466,21 @@ func (s *Store) Stop() {
 	case <-s.stopCleanup:
 	default:
 		close(s.stopCleanup)
+	}
+
+	s.rewriteTimerMu.Lock()
+	if s.rewriteTimer != nil {
+		s.rewriteTimer.Stop()
+	}
+	s.rewriteTimerMu.Unlock()
+
+	s.flushMu.Lock()
+	if s.flushTimer != nil {
+		s.flushTimer.Stop()
+	}
+	needFlush := s.flushBuf != nil
+	s.flushMu.Unlock()
+	if needFlush {
+		s.flushState()
 	}
 }

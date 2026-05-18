@@ -121,10 +121,12 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 
 func (m *Metrics) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 		"uptime": m.Uptime(),
-	})
+	}); err != nil {
+		slog.Warn("health handler encode error", "error", err)
+	}
 }
 
 func (m *Metrics) StartServer(addr string, storeSize func() int64) *http.Server {

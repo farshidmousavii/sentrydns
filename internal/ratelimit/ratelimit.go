@@ -43,11 +43,11 @@ func New(maxRPS int) *Limiter {
 }
 
 func (l *Limiter) shardFor(ip string) *shard {
-	h := 0
+	h := uint64(0)
 	for _, c := range ip {
-		h = h*31 + int(c)
+		h = h*31 + uint64(c)
 	}
-	return &l.shards[(h^(len(l.shards)-1))%len(l.shards)]
+	return &l.shards[h%uint64(len(l.shards))]
 }
 
 func (l *Limiter) Allow(ip string) bool {

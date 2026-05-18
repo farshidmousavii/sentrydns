@@ -284,6 +284,10 @@ func TestGlobalFallbackDNS(t *testing.T) {
 	m := metrics.New()
 	s, _ := store.New(f.Name(), discardLog, m, "")
 
+	// Pre-load domain into store so we route through the store path,
+	// which calls query() directly (bypassing resolveWithLearning/shortWait).
+	s.Add("fallback-test.com")
+
 	iranAddr := startMockDNS(t, map[string]string{})
 
 	fallbackAddr := startMockDNS(t, map[string]string{
@@ -291,7 +295,8 @@ func TestGlobalFallbackDNS(t *testing.T) {
 	})
 
 	r := New(c, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m, fallbackAddr, 0, 5, time.Second)
-	r.SetGlobalTimeout(200 * time.Millisecond)
+	r.SetGlobalTimeout(50 * time.Millisecond)
+	r.SetTimeout(time.Second)
 
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn("fallback-test.com"), dns.TypeA)

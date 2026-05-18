@@ -180,7 +180,10 @@ func (u *Updater) setUpdateSuccess(success bool) {
 	}
 }
 
-const minValidCIDR = 10
+const (
+	minValidCIDR = 10
+	maxReadBytes = 100 * 1024 * 1024 // 100 MB
+)
 
 func containsValidCIDR(path string) bool {
 	f, err := os.Open(path)
@@ -190,7 +193,7 @@ func containsValidCIDR(path string) bool {
 	defer f.Close()
 
 	var count int
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(io.LimitReader(f, maxReadBytes))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" || line[0] == '#' {

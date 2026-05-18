@@ -46,17 +46,12 @@ func (c *Cache) Get(req *dns.Msg) *dns.Msg {
 
 	c.mu.RLock()
 	e, ok := c.entries[key]
-	if ok && time.Now().After(e.expires) {
+	if !ok {
 		c.mu.RUnlock()
-		c.mu.Lock()
-		if e, ok := c.entries[key]; ok && time.Now().After(e.expires) {
-			delete(c.entries, key)
-		}
-		c.mu.Unlock()
 		c.log.Debug("cache_miss", "key", key)
 		return nil
 	}
-	if ok {
+	if time.Now().Before(e.expires) {
 		resp := e.msg.Copy()
 		resp.Id = req.Id
 		c.mu.RUnlock()
@@ -65,6 +60,11 @@ func (c *Cache) Get(req *dns.Msg) *dns.Msg {
 	}
 	c.mu.RUnlock()
 
+	c.mu.Lock()
+	if e, ok := c.entries[key]; ok && time.Now().After(e.expires) {
+		delete(c.entries, key)
+	}
+	c.mu.Unlock()
 	c.log.Debug("cache_miss", "key", key)
 	return nil
 }
@@ -101,6 +101,10 @@ func (c *Cache) Set(req *dns.Msg, resp *dns.Msg) {
 func (c *Cache) evictOne() {
 	var oldestKey string
 	var oldestExpiry time.Time
+	sample := 100
+	if sample > len(c.entries) {
+		sample = len(c.entries)
+	}
 	count := 0
 	for k, e := range c.entries {
 		if oldestKey == "" || e.expires.Before(oldestExpiry) {
@@ -108,7 +112,7 @@ func (c *Cache) evictOne() {
 			oldestExpiry = e.expires
 		}
 		count++
-		if count >= 10 {
+		if count >= sample {
 			break
 		}
 	}

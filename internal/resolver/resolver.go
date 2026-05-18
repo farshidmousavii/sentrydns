@@ -26,11 +26,13 @@ var dnsClientPool = sync.Pool{
 var dnsIDCounter atomic.Uint32
 
 func randDNSID() uint16 {
-	id := uint16(dnsIDCounter.Add(1))
+	id := dnsIDCounter.Add(1)
+	// Mask to 16 bits; skip 0 to avoid clients treating it as unset
+	id &= 0xFFFF
 	if id == 0 {
-		return 1
+		id = 1
 	}
-	return id
+	return uint16(id)
 }
 
 type cbState int32
@@ -56,6 +58,7 @@ func (cb *circuitBreaker) recordFailure() {
 	if prev == cbHalfOpen || (prev == cbClosed && n >= cb.threshold) {
 		if cb.state.CompareAndSwap(int32(prev), int32(cbOpen)) {
 			cb.lastOpen.Store(time.Now().UnixNano())
+			cb.failures.Store(0)
 			if cb.onStateChange != nil {
 				cb.onStateChange(cbOpen)
 			}
@@ -80,14 +83,23 @@ func (cb *circuitBreaker) recordSuccess() {
 }
 
 func (cb *circuitBreaker) isOpen() bool {
-	if cb.state.Load() != int32(cbOpen) {
+	switch cbState(cb.state.Load()) {
+	case cbOpen, cbHalfOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+func (cb *circuitBreaker) tryProbe() bool {
+	st := cbState(cb.state.Load())
+	if st != cbOpen {
 		return false
 	}
 	if time.Since(time.Unix(0, cb.lastOpen.Load())) <= time.Duration(cb.cooldown.Load()) {
-		return true
+		return false
 	}
-	cb.state.CompareAndSwap(int32(cbOpen), int32(cbHalfOpen))
-	return false
+	return cb.state.CompareAndSwap(int32(cbOpen), int32(cbHalfOpen))
 }
 
 func ServerFail(req *dns.Msg) *dns.Msg {
@@ -118,7 +130,6 @@ type Resolver struct {
 	iranCb            *circuitBreaker
 	iranAddr          string
 	globalAddr        string
-	wg                sync.WaitGroup
 	stopped           atomic.Bool
 	stopCh            chan struct{}
 	active            atomic.Int64
@@ -254,7 +265,10 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	if shortWait <= 0 {
 		shortWait = time.Duration(r.timeout.Load()) / 4
 	} else {
-		shortWait += 100 * time.Millisecond
+		shortWait = shortWait / 4
+	}
+	if shortWait < 100*time.Millisecond {
+		shortWait = 100 * time.Millisecond
 	}
 
 	var iranMsg, globalMsg *dns.Msg
@@ -414,10 +428,10 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dns.Msg {
 	queryCtx, queryCancel := context.WithCancel(ctx)
 	defer queryCancel()
-	reqCopy := req.Copy()
 
 	if r.isIranTLD(domain) {
 		r.metrics.PathTLD.Add(1)
+		reqCopy := req.Copy()
 		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
@@ -435,6 +449,7 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 
 	if r.isPreferIran(domain) {
 		r.metrics.PathPreferIran.Add(1)
+		reqCopy := req.Copy()
 		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp != nil && resp.Rcode == dns.RcodeSuccess {
 			ips := extractIPs(resp)
@@ -450,11 +465,11 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 
 	if r.store.IsIran(domain) {
 		r.metrics.PathStore.Add(1)
+		reqCopy := req.Copy()
 		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
 			r.store.Remove(domain)
-			r.metrics.QueriesGlobal.Add(1)
-			return r.query(queryCtx, reqCopy, r.globalDNS)
+			return r.resolveWithLearning(ctx, req, domain)
 		} else if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
 			return r.query(queryCtx, reqCopy, r.globalDNS)
@@ -469,14 +484,17 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 	}
 
 	r.metrics.PathLearn.Add(1)
-	return r.resolveWithLearning(ctx, reqCopy, domain)
+	return r.resolveWithLearning(ctx, req, domain)
 }
 
 func (r *Resolver) queryIranDNS(ctx context.Context, req *dns.Msg) *dns.Msg {
 	if r.iranCb.isOpen() {
-		r.metrics.IranCBSkipped.Add(1)
-		r.log.Debug("circuit open, skipping IranDNS", "domain", req.Question[0].Name)
-		return nil
+		if !r.iranCb.tryProbe() {
+			r.metrics.IranCBSkipped.Add(1)
+			r.log.Debug("circuit open, skipping IranDNS", "domain", req.Question[0].Name)
+			return nil
+		}
+		r.log.Debug("circuit half-open, probe to IranDNS", "domain", req.Question[0].Name)
 	}
 	return r.query(ctx, req, r.iranDNS)
 }
@@ -578,9 +596,9 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 		tcpC := dnsClientPool.Get().(*dns.Client)
 		tcpC.Timeout = timeout
 		tcpC.Net = "tcp"
-		tcpCtx, tcpCancel := context.WithTimeout(ctx, timeout)
+		tcpCtx, tcpCancel := context.WithTimeout(context.Background(), timeout)
+		defer tcpCancel()
 		tcpResp, _, err := tcpC.ExchangeContext(tcpCtx, req, addr)
-		tcpCancel()
 		dnsClientPool.Put(tcpC)
 		if err == nil {
 			return tcpResp
@@ -591,13 +609,19 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 }
 
 func (r *Resolver) ValidateDomain(domain string) bool {
+	if r.stopped.Load() {
+		return true
+	}
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 	req.Id = randDNSID()
 	c := dnsClientPool.Get().(*dns.Client)
 	c.Timeout = time.Second
 	c.Net = "udp"
-	resp, _, err := c.Exchange(req, r.iranAddr)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	resp, _, err := c.ExchangeContext(ctx, req, r.iranAddr)
+	cancel()
 	dnsClientPool.Put(c)
 	if err != nil || resp == nil {
 		return true
@@ -616,6 +640,9 @@ func resolveAddr(s string) string {
 }
 
 func (r *Resolver) IranDNSHealthy() bool {
+	if r.stopped.Load() {
+		return false
+	}
 	req := new(dns.Msg)
 	req.SetQuestion("nic.ir.", dns.TypeA)
 	req.Id = randDNSID()
@@ -623,7 +650,9 @@ func (r *Resolver) IranDNSHealthy() bool {
 	c.Timeout = 2 * time.Second
 	c.Net = "udp"
 	for i := 0; i < 3; i++ {
-		resp, _, err := c.Exchange(req, r.iranAddr)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		resp, _, err := c.ExchangeContext(ctx, req, r.iranAddr)
+		cancel()
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
 			dnsClientPool.Put(c)
 			return true
@@ -665,7 +694,14 @@ func (r *Resolver) SetCBCooldown(d time.Duration) {
 func (r *Resolver) Stop() {
 	r.stopped.Store(true)
 	close(r.stopCh)
+
+	const stopTimeout = 30 * time.Second
+	deadline := time.Now().Add(stopTimeout)
 	for r.active.Load() > 0 {
+		if time.Now().After(deadline) {
+			r.log.Warn("resolver stop timeout, forcing shutdown")
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	r.cache.Stop()

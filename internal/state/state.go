@@ -8,12 +8,13 @@ import (
 )
 
 type State struct {
-	LastUpdateUnix    int64  `json:"last_update_unix"`
-	LastUpdateSuccess bool   `json:"last_update_success"`
-	LastCleanupUnix   int64  `json:"last_cleanup_unix"`
-	LearnedTodayDate  string `json:"learned_today_date"`
-	LearnedTodayCount int64  `json:"learned_today_count"`
-	LearnedTotalCount int64  `json:"learned_total_count"`
+	LastUpdateUnix         int64  `json:"last_update_unix"`
+	LastUpdateSuccess      bool   `json:"last_update_success"`
+	LastCleanupUnix        int64  `json:"last_cleanup_unix"`
+	LearnedTodayDate       string `json:"learned_today_date"`
+	LearnedTodayCount      int64  `json:"learned_today_count"`
+	LearnedTotalCount      int64  `json:"learned_total_count"`
+	LearnedTotalAtMidnight int64  `json:"learned_total_at_midnight"`
 }
 
 var updateMu sync.Mutex

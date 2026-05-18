@@ -21,11 +21,12 @@ func TestSaveAndLoad(t *testing.T) {
 	defer os.Remove(path)
 
 	st := &State{
-		LastUpdateUnix:    1000,
-		LastUpdateSuccess: true,
-		LastCleanupUnix:   2000,
-		LearnedTodayDate:  "2026-05-15",
-		LearnedTodayCount: 42,
+		LastUpdateUnix:         1000,
+		LastUpdateSuccess:      true,
+		LastCleanupUnix:        2000,
+		LearnedTodayDate:       "2026-05-15",
+		LearnedTodayCount:      42,
+		LearnedTotalAtMidnight: 1000,
 	}
 
 	if err := Save(path, st); err != nil {
@@ -47,6 +48,9 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.LearnedTodayCount != 42 {
 		t.Errorf("LearnedTodayCount = %d, want 42", loaded.LearnedTodayCount)
+	}
+	if loaded.LearnedTotalAtMidnight != 1000 {
+		t.Errorf("LearnedTotalAtMidnight = %d, want 1000", loaded.LearnedTotalAtMidnight)
 	}
 }
 

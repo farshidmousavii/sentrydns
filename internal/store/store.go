@@ -87,7 +87,6 @@ func (s *Store) Add(domain string) {
 
 	if s.metrics != nil {
 		s.metrics.LearnedTotal.Add(1)
-		s.metrics.LearnedToday.Add(1)
 	}
 	s.persist(domain)
 	if s.metrics != nil && s.metrics.LearnedTotal.Load()%50 == 0 {
@@ -293,10 +292,17 @@ func (s *Store) saveLearnedToday() {
 	if s.statePath == "" || s.metrics == nil {
 		return
 	}
+	total := s.metrics.LearnedTotal.Load()
+	midnight := s.metrics.LearnedTotalAtMidnight.Load()
+	today := total - midnight
+	if today < 0 {
+		today = 0
+	}
 	st := &statepkg.State{
-		LearnedTodayDate:  time.Now().Format("2006-01-02"),
-		LearnedTodayCount: s.metrics.LearnedToday.Load(),
-		LearnedTotalCount: s.metrics.LearnedTotal.Load(),
+		LearnedTodayDate:       time.Now().Format("2006-01-02"),
+		LearnedTodayCount:      today,
+		LearnedTotalAtMidnight: midnight,
+		LearnedTotalCount:      total,
 	}
 	s.saveStateSoon(st)
 }
@@ -328,17 +334,11 @@ func (s *Store) flushState() {
 
 	st := s.flushBuf
 	s.flushBuf = nil
-	if s.metrics != nil && st.LearnedTotalCount == 0 {
-		st.LearnedTotalCount = s.metrics.LearnedTotal.Load()
-	}
 	statepkg.Update(s.statePath, func(s2 *statepkg.State) {
-		if st.LearnedTotalCount > 0 {
-			s2.LearnedTotalCount = st.LearnedTotalCount
-		}
-		if st.LearnedTodayCount > 0 {
-			s2.LearnedTodayCount = st.LearnedTodayCount
-			s2.LearnedTodayDate = st.LearnedTodayDate
-		}
+		s2.LearnedTotalCount = st.LearnedTotalCount
+		s2.LearnedTotalAtMidnight = st.LearnedTotalAtMidnight
+		s2.LearnedTodayCount = st.LearnedTodayCount
+		s2.LearnedTodayDate = st.LearnedTodayDate
 	})
 }
 

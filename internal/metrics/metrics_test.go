@@ -55,13 +55,13 @@ func TestQueryCounters(t *testing.T) {
 func TestLearnedCounters(t *testing.T) {
 	m := New()
 	m.LearnedTotal.Add(100)
-	m.LearnedToday.Add(5)
+	m.LearnedTotalAtMidnight.Store(95)
 
 	if m.LearnedTotal.Load() != 100 {
 		t.Errorf("LearnedTotal = %d, want 100", m.LearnedTotal.Load())
 	}
-	if m.LearnedToday.Load() != 5 {
-		t.Errorf("LearnedToday = %d, want 5", m.LearnedToday.Load())
+	if m.LearnedTodayValue() != 5 {
+		t.Errorf("LearnedTodayValue = %d, want 5", m.LearnedTodayValue())
 	}
 }
 
@@ -212,7 +212,7 @@ func TestMetricsHandler(t *testing.T) {
 	m.QueriesCached.Store(10)
 	m.CacheMiss.Store(32)
 	m.LearnedTotal.Store(500)
-	m.LearnedToday.Store(15)
+	m.LearnedTotalAtMidnight.Store(485)
 	m.LastUpdateTime.Store(time.Unix(1000000, 0))
 	m.LastUpdateSuccess.Store(true)
 	m.PathTLD.Store(8)
@@ -431,7 +431,6 @@ func TestUptimeFormat(t *testing.T) {
 	m := &Metrics{startTime: time.Now().Add(-2 * time.Hour)}
 	m.LastUpdateTime.Store(time.Time{})
 	m.LastUpdateSuccess.Store(false)
-	m.LearnedToday.Store(0)
 
 	u := m.Uptime()
 	if u == "" {
@@ -465,27 +464,51 @@ func TestRestoreFromFile(t *testing.T) {
 	path := tempFile(t)
 	defer os.Remove(path)
 
-	// write a state file with today's date
+	// write a state file with today's date, new format
 	today := time.Now().Format("2006-01-02")
 	state.Save(path, &state.State{
-		LastUpdateUnix:    1000,
-		LastUpdateSuccess: true,
-		LastCleanupUnix:   2000,
-		LearnedTodayDate:  today,
-		LearnedTodayCount: 42,
+		LastUpdateUnix:         1000,
+		LastUpdateSuccess:      true,
+		LastCleanupUnix:        2000,
+		LearnedTodayDate:       today,
+		LearnedTotalAtMidnight: 958,
+		LearnedTotalCount:      1000,
 	})
 
 	m := New()
 	m.RestoreFromFile(path)
 
-	if m.LearnedToday.Load() != 42 {
-		t.Errorf("LearnedToday = %d, want 42", m.LearnedToday.Load())
+	if m.LearnedTodayValue() != 42 {
+		t.Errorf("LearnedTodayValue = %d, want 42", m.LearnedTodayValue())
 	}
 	if !m.LastUpdateSuccess.Load() {
 		t.Error("LastUpdateSuccess should be true")
 	}
 	if v, ok := m.LastUpdateTime.Load().(time.Time); !ok || v.Unix() != 1000 {
 		t.Errorf("LastUpdateTime = %v, want unix 1000", v)
+	}
+}
+
+func TestRestoreFromFileMigration(t *testing.T) {
+	path := tempFile(t)
+	defer os.Remove(path)
+
+	// old format: no LearnedTotalAtMidnight, just LearnedTodayCount
+	today := time.Now().Format("2006-01-02")
+	state.Save(path, &state.State{
+		LearnedTodayDate:  today,
+		LearnedTodayCount: 42,
+		LearnedTotalCount: 1000,
+	})
+
+	m := New()
+	m.RestoreFromFile(path)
+
+	if m.LearnedTodayValue() != 42 {
+		t.Errorf("LearnedTodayValue = %d, want 42 (old format migration)", m.LearnedTodayValue())
+	}
+	if m.LearnedTotalAtMidnight.Load() != 958 {
+		t.Errorf("LearnedTotalAtMidnight = %d, want 958", m.LearnedTotalAtMidnight.Load())
 	}
 }
 
@@ -503,8 +526,8 @@ func TestRestoreFromFileWrongDate(t *testing.T) {
 	m := New()
 	m.RestoreFromFile(path)
 
-	if m.LearnedToday.Load() != 0 {
-		t.Errorf("LearnedToday = %d, want 0 (wrong date)", m.LearnedToday.Load())
+	if m.LearnedTodayValue() != 0 {
+		t.Errorf("LearnedTodayValue = %d, want 0 (wrong date)", m.LearnedTodayValue())
 	}
 }
 
@@ -512,8 +535,8 @@ func TestRestoreFromFileMissing(t *testing.T) {
 	m := New()
 	m.RestoreFromFile("/nonexistent/state.json")
 	// should not crash, defaults should be zero
-	if m.LearnedToday.Load() != 0 {
-		t.Errorf("LearnedToday = %d, want 0", m.LearnedToday.Load())
+	if m.LearnedTodayValue() != 0 {
+		t.Errorf("LearnedTodayValue = %d, want 0", m.LearnedTodayValue())
 	}
 	if m.LastUpdateSuccess.Load() {
 		t.Error("LastUpdateSuccess should be false")

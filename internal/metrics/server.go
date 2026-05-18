@@ -87,7 +87,7 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			CacheMiss:         m.CacheMiss.Load(),
 			CacheHitRatio:     hitRatio,
 			LearnedTotal:      m.LearnedTotal.Load(),
-			LearnedToday:      m.LearnedToday.Load(),
+			LearnedToday:      m.LearnedTodayValue(),
 			StoreSize:         storeSize(),
 			StoreRemoved:      m.StoreRemoved.Load(),
 			StoreCleaned:      m.StoreCleaned.Load(),

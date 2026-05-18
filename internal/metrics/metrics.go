@@ -9,15 +9,15 @@ import (
 )
 
 type Metrics struct {
-	QueriesTotal    atomic.Int64
-	QueriesIran     atomic.Int64
-	QueriesGlobal   atomic.Int64
-	QueriesRetried atomic.Int64
-	QueriesServfail atomic.Int64
-	QueriesCached   atomic.Int64
-	CacheMiss       atomic.Int64
-	LearnedTotal    atomic.Int64
-	LearnedToday    atomic.Int64
+	QueriesTotal             atomic.Int64
+	QueriesIran              atomic.Int64
+	QueriesGlobal            atomic.Int64
+	QueriesRetried           atomic.Int64
+	QueriesServfail          atomic.Int64
+	QueriesCached            atomic.Int64
+	CacheMiss                atomic.Int64
+	LearnedTotal             atomic.Int64
+	LearnedTotalAtMidnight   atomic.Int64
 
 	// routing path distribution
 	PathTLD        atomic.Int64
@@ -60,6 +60,15 @@ type Metrics struct {
 	stop      chan struct{}
 }
 
+func (m *Metrics) LearnedTodayValue() int64 {
+	midnight := m.LearnedTotalAtMidnight.Load()
+	total := m.LearnedTotal.Load()
+	if total < midnight {
+		return 0
+	}
+	return total - midnight
+}
+
 func New() *Metrics {
 	m := &Metrics{
 		startTime: time.Now(),
@@ -73,9 +82,20 @@ func (m *Metrics) RestoreFromFile(path string) {
 	m.statePath = path
 	st := state.Load(path)
 	m.LearnedTotal.Store(st.LearnedTotalCount)
-	if st.LearnedTodayDate == time.Now().Format("2006-01-02") {
-		m.LearnedToday.Store(st.LearnedTodayCount)
+
+	today := time.Now().Format("2006-01-02")
+	if st.LearnedTodayDate == today && st.LearnedTotalAtMidnight > 0 {
+		m.LearnedTotalAtMidnight.Store(st.LearnedTotalAtMidnight)
+	} else if st.LearnedTodayDate == today {
+		midnight := st.LearnedTotalCount - st.LearnedTodayCount
+		if midnight < 0 || midnight > st.LearnedTotalCount {
+			midnight = st.LearnedTotalCount
+		}
+		m.LearnedTotalAtMidnight.Store(midnight)
+	} else {
+		m.LearnedTotalAtMidnight.Store(st.LearnedTotalCount)
 	}
+
 	if st.LastUpdateUnix > 0 {
 		m.LastUpdateTime.Store(time.Unix(st.LastUpdateUnix, 0))
 	}
@@ -92,11 +112,13 @@ func (m *Metrics) resetDailyStats() {
 	for {
 		select {
 		case <-timer.C:
-			m.LearnedToday.Store(0)
+			total := m.LearnedTotal.Load()
+			m.LearnedTotalAtMidnight.Store(total)
 			if m.statePath != "" {
 				state.Update(m.statePath, func(st *state.State) {
 					st.LearnedTodayDate = time.Now().Format("2006-01-02")
 					st.LearnedTodayCount = 0
+					st.LearnedTotalAtMidnight = total
 				})
 			}
 			timer.Reset(24 * time.Hour)

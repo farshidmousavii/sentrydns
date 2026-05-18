@@ -474,13 +474,16 @@ func (s *Store) Stop() {
 	}
 	s.rewriteTimerMu.Unlock()
 
+	s.saveLearnedToday()
+
 	s.flushMu.Lock()
 	if s.flushTimer != nil {
 		s.flushTimer.Stop()
 	}
-	needFlush := s.flushBuf != nil
-	s.flushMu.Unlock()
-	if needFlush {
+	if s.flushBuf != nil {
+		s.flushMu.Unlock()
 		s.flushState()
+	} else {
+		s.flushMu.Unlock()
 	}
 }

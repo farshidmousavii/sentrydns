@@ -139,7 +139,9 @@ func main() {
 			return
 		}
 
-		resp := r.Resolve(context.Background(), req)
+		queryCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		resp := r.Resolve(queryCtx, req)
+		cancel()
 		if resp == nil {
 			resp = resolver.ServerFail(req)
 		}

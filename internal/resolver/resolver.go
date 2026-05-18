@@ -2,9 +2,9 @@ package resolver
 
 import (
 	"context"
-	"crypto/rand"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +21,16 @@ import (
 
 var dnsClientPool = sync.Pool{
 	New: func() interface{} { return &dns.Client{} },
+}
+
+var dnsIDCounter atomic.Uint32
+
+func randDNSID() uint16 {
+	id := uint16(dnsIDCounter.Add(1))
+	if id == 0 {
+		return 1
+	}
+	return id
 }
 
 type cbState int32
@@ -102,7 +112,7 @@ type Resolver struct {
 	metrics           *metrics.Metrics
 	iranTLDs          map[string]bool
 	hijackIPs         map[string]bool
-	hijackRanges      []*net.IPNet
+	hijackRanges      []netip.Prefix
 	preferIran        map[string]bool
 	sf                singleflight.Group
 	iranCb            *circuitBreaker
@@ -121,11 +131,11 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		hijacks[ip] = true
 	}
 
-	var ranges []*net.IPNet
+	var ranges []netip.Prefix
 	for _, cidr := range hijackRanges {
-		_, network, err := net.ParseCIDR(cidr)
+		prefix, err := netip.ParsePrefix(cidr)
 		if err == nil {
-			ranges = append(ranges, network)
+			ranges = append(ranges, prefix)
 		}
 	}
 
@@ -188,8 +198,8 @@ func (r *Resolver) isHijacked(ips []string) bool {
 		if r.hijackIPs[ipStr] {
 			return true
 		}
-		ip := net.ParseIP(ipStr)
-		if ip != nil {
+		ip, err := netip.ParseAddr(ipStr)
+		if err == nil {
 			for _, network := range r.hijackRanges {
 				if network.Contains(ip) {
 					return true
@@ -348,7 +358,7 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	origID := req.Id
 	key := strings.ToLower(domain) + ":" + dns.TypeToString[req.Question[0].Qtype]
 
-	v, _, _ := r.sf.Do(key, func() (interface{}, error) {
+	v, err, _ := r.sf.Do(key, func() (interface{}, error) {
 		resp := r.resolve(ctx, req, domain)
 
 		if resp == nil || resp.Rcode == dns.RcodeServerFailure {
@@ -367,6 +377,10 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 		r.cache.Set(req, resp)
 		return resp, nil
 	})
+	if err != nil {
+		r.metrics.QueriesServfail.Add(1)
+		return ServerFail(req)
+	}
 
 	resp := v.(*dns.Msg).Copy()
 	resp.Id = origID
@@ -431,7 +445,7 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 	}
 
 	r.metrics.PathLearn.Add(1)
-	return r.resolveWithLearning(ctx, req, domain)
+	return r.resolveWithLearning(ctx, reqCopy, domain)
 }
 
 func (r *Resolver) queryIranDNS(ctx context.Context, req *dns.Msg) *dns.Msg {
@@ -489,15 +503,7 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 	}
 
 	start := time.Now()
-	var idBuf [2]byte
-	if _, err := rand.Read(idBuf[:]); err != nil {
-		req.Id = 1
-	} else {
-		req.Id = uint16(idBuf[0])<<8 | uint16(idBuf[1])
-		if req.Id == 0 {
-			req.Id = 1
-		}
-	}
+	req.Id = randDNSID()
 	resp, _, err := c.ExchangeContext(dnsCtx, req, addr)
 	elapsed := time.Since(start)
 	dnsClientPool.Put(c)
@@ -563,6 +569,7 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 func (r *Resolver) ValidateDomain(domain string) bool {
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	req.Id = randDNSID()
 	c := dnsClientPool.Get().(*dns.Client)
 	c.Timeout = time.Second
 	c.Net = "udp"
@@ -587,6 +594,7 @@ func resolveAddr(s string) string {
 func (r *Resolver) IranDNSHealthy() bool {
 	req := new(dns.Msg)
 	req.SetQuestion("nic.ir.", dns.TypeA)
+	req.Id = randDNSID()
 	c := dnsClientPool.Get().(*dns.Client)
 	c.Timeout = 2 * time.Second
 	c.Net = "udp"

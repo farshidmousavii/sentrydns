@@ -247,6 +247,8 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 	backoff := 1 * time.Second
 	const maxBackoff = 60 * time.Second
 	retries := 0
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
 	for {
 		if healthCheck() {
 			if retries > 0 {
@@ -256,8 +258,9 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 		}
 		retries++
 		s.log.Warn("cleanup waiting for IranDNS", "backoff", backoff, "attempt", retries)
+		timer.Reset(backoff)
 		select {
-		case <-time.After(backoff):
+		case <-timer.C:
 		case <-s.stopCleanup:
 			return
 		}

@@ -75,7 +75,7 @@ func main() {
 
 	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m, cfg.GlobalDNSFallback, cfg.CacheMaxEntries)
 
-	r.SetTimeout(time.Duration(cfg.Timeout) * time.Second)
+	r.SetTimeout(time.Duration(cfg.IranDNSTimeout) * time.Second)
 	r.SetGlobalTimeout(time.Duration(cfg.GlobalDNSTimeout * float64(time.Second)))
 
 	limiter := ratelimit.New(cfg.RateLimitPerClient)

@@ -83,11 +83,15 @@ func (m *Metrics) RestoreFromFile(path string) {
 }
 
 func (m *Metrics) resetDailyStats() {
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
+	now := time.Now()
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	delay := nextMidnight.Sub(now)
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
 	for {
 		select {
-		case <-ticker.C:
+		case <-timer.C:
 			m.LearnedToday.Store(0)
 			if m.statePath != "" {
 				state.Update(m.statePath, func(st *state.State) {
@@ -95,6 +99,7 @@ func (m *Metrics) resetDailyStats() {
 					st.LearnedTodayCount = 0
 				})
 			}
+			timer.Reset(24 * time.Hour)
 		case <-m.stop:
 			return
 		}

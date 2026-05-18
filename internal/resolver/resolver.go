@@ -322,7 +322,7 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 		r.log.Info("routed", "domain", domain, "upstream", "global")
 		return globalMsg
 	}
-	r.log.Warn("both upstreams failed", "domain", domain)
+	r.log.Warn("no suitable upstream response", "domain", domain, "iran_attempted", !iranOpen, "global_attempted", needGlobal)
 	return ServerFail(req)
 }
 
@@ -374,18 +374,22 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 }
 
 func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dns.Msg {
+	queryCtx, queryCancel := context.WithCancel(ctx)
+	defer queryCancel()
+	reqCopy := req.Copy()
+
 	if r.isIranTLD(domain) {
 		r.metrics.PathTLD.Add(1)
-		resp := r.queryIranDNS(ctx, req)
+		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
-			resp = r.query(ctx, req, r.globalDNS)
+			resp = r.query(queryCtx, reqCopy, r.globalDNS)
 			return resp
 		}
 		if ips := extractIPs(resp); len(ips) > 0 && r.isHijacked(ips) {
 			r.log.Warn("hijacked response for TLD domain", "domain", domain)
 			r.metrics.QueriesGlobal.Add(1)
-			return r.query(ctx, req, r.globalDNS)
+			return r.query(queryCtx, reqCopy, r.globalDNS)
 		}
 		r.metrics.QueriesIran.Add(1)
 		return resp
@@ -393,7 +397,7 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 
 	if r.isPreferIran(domain) {
 		r.metrics.PathPreferIran.Add(1)
-		resp := r.queryIranDNS(ctx, req)
+		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp != nil && resp.Rcode == dns.RcodeSuccess {
 			ips := extractIPs(resp)
 			if len(ips) > 0 && !r.isHijacked(ips) {
@@ -403,23 +407,24 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 			}
 		}
 		r.metrics.QueriesGlobal.Add(1)
-		return r.query(ctx, req, r.globalDNS)
+		return r.query(queryCtx, reqCopy, r.globalDNS)
 	}
 
 	if r.store.IsIran(domain) {
 		r.metrics.PathStore.Add(1)
-		resp := r.queryIranDNS(ctx, req)
+		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
 			r.store.Remove(domain)
-			return r.resolveWithLearning(ctx, req, domain)
+			r.metrics.QueriesGlobal.Add(1)
+			return r.query(queryCtx, reqCopy, r.globalDNS)
 		} else if resp == nil || resp.Rcode != dns.RcodeSuccess {
 			r.metrics.QueriesGlobal.Add(1)
-			return r.query(ctx, req, r.globalDNS)
+			return r.query(queryCtx, reqCopy, r.globalDNS)
 		}
 		if ips := extractIPs(resp); len(ips) > 0 && r.isHijacked(ips) {
 			r.log.Warn("hijacked response for store domain", "domain", domain)
 			r.metrics.QueriesGlobal.Add(1)
-			return r.query(ctx, req, r.globalDNS)
+			return r.query(queryCtx, reqCopy, r.globalDNS)
 		}
 		r.metrics.QueriesIran.Add(1)
 		return resp
@@ -558,8 +563,11 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 func (r *Resolver) ValidateDomain(domain string) bool {
 	req := new(dns.Msg)
 	req.SetQuestion(dns.Fqdn(domain), dns.TypeA)
-	c := &dns.Client{Timeout: 1 * time.Second}
+	c := dnsClientPool.Get().(*dns.Client)
+	c.Timeout = time.Second
+	c.Net = "udp"
 	resp, _, err := c.Exchange(req, r.iranAddr)
+	dnsClientPool.Put(c)
 	if err != nil || resp == nil {
 		return true
 	}
@@ -579,16 +587,20 @@ func resolveAddr(s string) string {
 func (r *Resolver) IranDNSHealthy() bool {
 	req := new(dns.Msg)
 	req.SetQuestion("nic.ir.", dns.TypeA)
-	c := &dns.Client{Timeout: 2 * time.Second}
+	c := dnsClientPool.Get().(*dns.Client)
+	c.Timeout = 2 * time.Second
+	c.Net = "udp"
 	for i := 0; i < 3; i++ {
 		resp, _, err := c.Exchange(req, r.iranAddr)
 		if err == nil && resp != nil && resp.Rcode == dns.RcodeSuccess {
+			dnsClientPool.Put(c)
 			return true
 		}
 		if i < 2 {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+	dnsClientPool.Put(c)
 	r.log.Warn("IranDNS health check failed", "addr", r.iranAddr)
 	return false
 }

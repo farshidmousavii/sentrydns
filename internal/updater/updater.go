@@ -182,6 +182,8 @@ func (u *Updater) setUpdateSuccess(success bool) {
 	}
 }
 
+const minValidCIDR = 10
+
 func containsValidCIDR(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -189,6 +191,7 @@ func containsValidCIDR(path string) bool {
 	}
 	defer f.Close()
 
+	var count int
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -196,7 +199,10 @@ func containsValidCIDR(path string) bool {
 			continue
 		}
 		if _, _, err := net.ParseCIDR(line); err == nil {
-			return true
+			count++
+			if count >= minValidCIDR {
+				return true
+			}
 		}
 	}
 	return false

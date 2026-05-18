@@ -220,8 +220,9 @@ func parseCleanupSchedule(schedule string, log *slog.Logger) (time.Duration, fun
 		return next.Sub(now)
 	}
 
-	log.Info("cleanup scheduled", "at", fmt.Sprintf("%02d:%02d", hour, min), "next", nextCleanup().Round(time.Second))
-	return nextCleanup(), nextCleanup
+	firstDelay := nextCleanup()
+	log.Info("cleanup scheduled", "at", fmt.Sprintf("%02d:%02d", hour, min), "next", firstDelay.Round(time.Second))
+	return firstDelay, nextCleanup
 }
 
 func ensureLogDir(logFile string) error {

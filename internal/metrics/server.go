@@ -138,7 +138,7 @@ func (m *Metrics) StartServer(addr string, storeSize func() int64) *http.Server 
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("metrics server error", "error", err)
+			slog.Warn("metrics server stopped", "error", err)
 		}
 	}()
 	return srv

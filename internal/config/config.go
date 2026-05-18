@@ -16,7 +16,7 @@ type Config struct {
 	MaxTTL                   int      `yaml:"max_ttl"`
 	IranRanges               string   `yaml:"iran_ranges"`
 	Learned                  string   `yaml:"learned"`
-	Timeout                  int      `yaml:"timeout"`
+	IranDNSTimeout           int      `yaml:"iran_dns_timeout"`
 	LogLevel                 string   `yaml:"log_level"`
 	LogFormat                string   `yaml:"log_format"`
 	LogFile                  string   `yaml:"log_file"`
@@ -44,7 +44,7 @@ func defaultConfig() Config {
 		MaxTTL:                   3600,
 		IranRanges:               "data/iran-ranges.txt",
 		Learned:                  "data/learned.conf",
-		Timeout:                  3,
+		IranDNSTimeout:           3,
 		LogLevel:                 "info",
 		LogFormat:                "json",
 		LogFile:                  "/var/log/sentrydns/sentrydns.log",
@@ -108,8 +108,8 @@ func (c *Config) Validate() error {
 	if c.MinTTL > c.MaxTTL {
 		return errors.New("min_ttl must not exceed max_ttl")
 	}
-	if c.Timeout <= 0 {
-		return errors.New("timeout must be positive")
+	if c.IranDNSTimeout <= 0 {
+		return errors.New("iran_dns_timeout must be positive")
 	}
 	if c.CleanupQPS <= 0 {
 		return errors.New("cleanup_qps must be positive")

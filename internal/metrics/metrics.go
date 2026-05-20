@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -58,6 +59,7 @@ type Metrics struct {
 	startTime time.Time
 	statePath string
 	stop      chan struct{}
+	stopOnce  sync.Once
 }
 
 func (m *Metrics) LearnedTodayValue() int64 {
@@ -129,11 +131,9 @@ func (m *Metrics) resetDailyStats() {
 }
 
 func (m *Metrics) Stop() {
-	select {
-	case <-m.stop:
-	default:
+	m.stopOnce.Do(func() {
 		close(m.stop)
-	}
+	})
 }
 
 func (m *Metrics) Uptime() string {

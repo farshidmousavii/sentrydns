@@ -3,6 +3,7 @@ package resolver
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/netip"
 	"strings"
@@ -277,11 +278,30 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	case msg := <-iranCh:
 		iranMsg = msg
 	case msg := <-globalCh:
-		iranCancel()
+		if msg != nil {
+			iranCancel()
+		}
 		globalCancel()
 		globalMsg = msg
 	case <-ctx.Done():
 		return ServerFail(req)
+	}
+
+	// If the first upstream returned nil, wait for the other one.
+	if iranMsg == nil && globalMsg == nil {
+		select {
+		case msg := <-iranCh:
+			iranMsg = msg
+		case msg := <-globalCh:
+			if msg != nil {
+				iranCancel()
+			}
+			globalCancel()
+			globalMsg = msg
+		case <-time.After(shortWait):
+		case <-ctx.Done():
+			return ServerFail(req)
+		}
 	}
 
 	if iranMsg != nil {
@@ -411,6 +431,10 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 
 		if resp == nil || resp.Rcode == dns.RcodeServerFailure {
 			r.metrics.QueriesRetried.Add(1)
+			timeout := time.Duration(r.timeout.Load())
+			const divisor = 15
+			jitter := timeout/divisor + time.Duration(rand.Int63n(int64(timeout/(divisor*2))))
+			time.Sleep(jitter)
 			resp = r.resolve(ctx, req, domain)
 		}
 
@@ -606,7 +630,7 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 		tcpC := dnsClientPool.Get().(*dns.Client)
 		tcpC.Timeout = timeout
 		tcpC.Net = "tcp"
-		tcpCtx, tcpCancel := context.WithTimeout(context.Background(), timeout)
+		tcpCtx, tcpCancel := context.WithTimeout(ctx, timeout)
 		defer tcpCancel()
 		tcpResp, _, err := tcpC.ExchangeContext(tcpCtx, req, addr)
 		dnsClientPool.Put(tcpC)
@@ -631,7 +655,6 @@ func (r *Resolver) ValidateDomain(domain string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	resp, _, err := c.ExchangeContext(ctx, req, r.iranAddr)
-	cancel()
 	dnsClientPool.Put(c)
 	if err != nil || resp == nil {
 		return true

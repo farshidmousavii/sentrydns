@@ -125,7 +125,7 @@ func (u *Updater) update() {
 	}
 	tmpPath := tmp.Name()
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	if _, err := io.Copy(tmp, io.LimitReader(resp.Body, maxReadBytes)); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		u.log.Error("failed to write temp file", "error", err)

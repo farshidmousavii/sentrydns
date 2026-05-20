@@ -24,6 +24,7 @@ type Store struct {
 	metrics      *metrics.Metrics
 	statePath    string
 	stopCleanup  chan struct{}
+	stopOnce     sync.Once
 	persistBuf   []string
 	persistBufGen uint64
 	persistMu    sync.Mutex
@@ -462,11 +463,9 @@ func (s *Store) cleanup(validate func(domain string) bool, qps int, healthCheck 
 }
 
 func (s *Store) Stop() {
-	select {
-	case <-s.stopCleanup:
-	default:
+	s.stopOnce.Do(func() {
 		close(s.stopCleanup)
-	}
+	})
 
 	s.rewriteTimerMu.Lock()
 	if s.rewriteTimer != nil {

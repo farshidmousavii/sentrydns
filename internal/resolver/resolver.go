@@ -360,6 +360,16 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 		r.log.Info("routed", "domain", domain, "upstream", "global")
 		return globalMsg
 	}
+	if !needGlobal {
+		fallbackCtx, fallbackCancel := context.WithTimeout(context.Background(), time.Duration(r.globalTimeout.Load()))
+		defer fallbackCancel()
+		if msg := r.query(fallbackCtx, req.Copy(), r.globalDNS); msg != nil {
+			r.metrics.QueriesGlobal.Add(1)
+			r.log.Info("routed", "domain", domain, "upstream", "global")
+			return msg
+		}
+	}
+
 	r.log.Warn("no suitable upstream response", "domain", domain, "iran_attempted", !iranOpen, "global_attempted", needGlobal)
 	return ServerFail(req)
 }

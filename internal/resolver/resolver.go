@@ -502,9 +502,15 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 		reqCopy := req.Copy()
 		resp := r.queryIranDNS(queryCtx, reqCopy)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
+			r.log.Warn("nxdomain for store domain, removing and relearning", "domain", domain)
 			r.store.Remove(domain)
 			return r.resolveWithLearning(ctx, req, domain)
 		} else if resp == nil || resp.Rcode != dns.RcodeSuccess {
+			if resp == nil {
+				r.log.Warn("iran dns query returned nil for store domain, falling back to global", "domain", domain)
+			} else {
+				r.log.Warn("iran dns failed for store domain, falling back to global", "domain", domain, "rcode", resp.Rcode)
+			}
 			r.metrics.QueriesGlobal.Add(1)
 			return r.query(queryCtx, reqCopy, r.globalDNS)
 		}

@@ -5,7 +5,7 @@ min_ttl: 300
 max_ttl: 3600
 iran_ranges: "data/iran-ranges.txt"
 learned: "data/learned.conf"
-timeout: 3
+iran_dns_timeout: 3
 log_level: "info"
 log_format: "json"
 log_file: "/var/log/sentrydns/sentrydns.log"
@@ -25,10 +25,15 @@ hijack_ranges:
 
 prefer_iran_domains:
   - "google.com"
+  - "easy4ipcloud.com"
 
 iran_ranges_url: "http://example.com/ranges.txt"
 iran_ranges_update_interval: 24h
 state_file: "data/.sentrydns-state"
+
+# circuit breaker: open after N consecutive Iran failures
+iran_cb_threshold: 10
+iran_cb_cooldown: 30s
 
 cleanup_initial_delay: 1h
 cleanup_qps: 100

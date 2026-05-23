@@ -37,6 +37,8 @@ type Config struct {
 	RateLimitPerClient       int      `yaml:"rate_limit_per_client"`
 	IranCBThreshold          int      `yaml:"iran_cb_threshold"`
 	IranCBCooldown           string   `yaml:"iran_cb_cooldown"`
+	GlobalCBThreshold        int      `yaml:"global_cb_threshold"`
+	GlobalCBCooldown         string   `yaml:"global_cb_cooldown"`
 }
 
 func defaultConfig() Config {
@@ -66,6 +68,8 @@ func defaultConfig() Config {
 		RateLimitPerClient:       0,
 		IranCBThreshold:          5,
 		IranCBCooldown:           "30s",
+		GlobalCBThreshold:        5,
+		GlobalCBCooldown:         "30s",
 	}
 }
 

@@ -129,6 +129,7 @@ type Resolver struct {
 	preferIran        map[string]bool
 	sf                singleflight.Group
 	iranCb            *circuitBreaker
+	globalCb          *circuitBreaker
 	iranAddr          string
 	globalAddr        string
 	stopped           atomic.Bool
@@ -136,7 +137,7 @@ type Resolver struct {
 	active            atomic.Int64
 }
 
-func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string, cacheMaxEntries int, cbThreshold int, cbCooldown time.Duration) *Resolver {
+func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, log *slog.Logger, iranTLDs, hijackIPs []string, hijackRanges []string, preferIranDomains []string, minTTL, maxTTL uint32, m *metrics.Metrics, globalDNSFallback string, cacheMaxEntries int, cbThreshold int, cbCooldown time.Duration, globalCBThreshold int, globalCBCooldown time.Duration) *Resolver {
 	tlds := make(map[string]bool)
 	for _, t := range iranTLDs {
 		tlds[strings.ToLower(t)] = true
@@ -188,9 +189,23 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 				}
 			},
 		},
+		globalCb: &circuitBreaker{
+			threshold: int32(globalCBThreshold),
+			cooldown:  atomic.Int64{},
+			onStateChange: func(s cbState) {
+				switch s {
+				case cbOpen:
+					m.GlobalCBTrips.Add(1)
+					m.GlobalCBOpen.Store(1)
+				case cbClosed:
+					m.GlobalCBOpen.Store(0)
+				}
+			},
+		},
 		stopCh: make(chan struct{}),
 	}
 	r.iranCb.cooldown.Store(int64(cbCooldown))
+	r.globalCb.cooldown.Store(int64(globalCBCooldown))
 	r.timeout.Store(int64(3 * time.Second))
 	r.globalTimeout.Store(int64(1500 * time.Millisecond))
 	return r
@@ -253,9 +268,15 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	defer globalCancel()
 
 	iranOpen := r.iranCb.isOpen()
+	globalOpen := r.globalCb.isOpen()
 	needGlobal := req.Question[0].Qtype == dns.TypeA || req.Question[0].Qtype == dns.TypeAAAA || iranOpen
 
-	if needGlobal {
+	globalStarted := needGlobal && !globalOpen
+	if needGlobal && globalOpen {
+		r.metrics.GlobalCBSkipped.Add(1)
+	}
+
+	if globalStarted {
 		go func() { globalCh <- r.query(globalCtx, req.Copy(), r.globalDNS) }()
 	}
 	if !iranOpen {
@@ -325,18 +346,23 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 			}
 		}
 
-		waitTimer := time.NewTimer(shortWait)
-		defer waitTimer.Stop()
-		select {
-		case msg := <-globalCh:
-			if !waitTimer.Stop() {
-				select {
-				case <-waitTimer.C:
-				default:
+		if globalStarted {
+			waitTimer := time.NewTimer(shortWait)
+			defer waitTimer.Stop()
+			select {
+			case msg := <-globalCh:
+				if !waitTimer.Stop() {
+					select {
+					case <-waitTimer.C:
+					default:
+					}
 				}
+				globalMsg = msg
+			case <-waitTimer.C:
+				r.metrics.ShortWaitExpired.Add(1)
 			}
-			globalMsg = msg
-		case <-waitTimer.C:
+		} else {
+			r.metrics.ShortWaitExpired.Add(1)
 		}
 
 		if globalMsg != nil {
@@ -345,7 +371,8 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 			return globalMsg
 		}
 
-		r.log.Warn("global timeout, iran returned non-iranian ip", "domain", domain)
+		r.log.Warn("global timeout, iran returned non-iranian ip",
+			"domain", domain, "short_wait_ms", shortWait.Milliseconds(), "global_skipped", !globalStarted)
 		return ServerFail(req)
 	}
 
@@ -390,7 +417,7 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 		}
 	}
 
-	r.log.Warn("no suitable upstream response", "domain", domain, "iran_attempted", !iranOpen, "global_attempted", needGlobal)
+	r.log.Warn("no suitable upstream response", "domain", domain, "iran_attempted", !iranOpen, "global_attempted", globalStarted)
 	return ServerFail(req)
 }
 
@@ -603,8 +630,10 @@ func (r *Resolver) query(ctx context.Context, req *dns.Msg, upstream string) *dn
 		r.metrics.GlobalQueryCount.Add(1)
 		if err != nil {
 			r.metrics.GlobalTimeouts.Add(1)
+			r.globalCb.recordFailure()
 		} else {
 			r.metrics.GlobalLatencyTotal.Add(int64(elapsed))
+			r.globalCb.recordSuccess()
 		}
 	}
 
@@ -728,6 +757,10 @@ func (r *Resolver) SetGlobalTimeout(d time.Duration) {
 
 func (r *Resolver) SetCBCooldown(d time.Duration) {
 	r.iranCb.cooldown.Store(int64(d))
+}
+
+func (r *Resolver) SetGlobalCBCooldown(d time.Duration) {
+	r.globalCb.cooldown.Store(int64(d))
 }
 
 func (r *Resolver) Stop() {

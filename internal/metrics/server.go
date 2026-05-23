@@ -43,6 +43,10 @@ type response struct {
 	IranCBSkipped     int64 `json:"iran_cb_skipped"`
 	IranCBTrips       int64 `json:"iran_cb_trips"`
 	IranCBOpen        int64 `json:"iran_cb_open"`
+	GlobalCBSkipped   int64 `json:"global_cb_skipped"`
+	GlobalCBTrips     int64 `json:"global_cb_trips"`
+	GlobalCBOpen      int64 `json:"global_cb_open"`
+	ShortWaitExpired  int64 `json:"short_wait_expired"`
 }
 
 func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
@@ -110,6 +114,10 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 		IranCBSkipped:     m.IranCBSkipped.Load(),
 		IranCBTrips:       m.IranCBTrips.Load(),
 		IranCBOpen:        m.IranCBOpen.Load(),
+		GlobalCBSkipped:   m.GlobalCBSkipped.Load(),
+		GlobalCBTrips:     m.GlobalCBTrips.Load(),
+		GlobalCBOpen:      m.GlobalCBOpen.Load(),
+		ShortWaitExpired:  m.ShortWaitExpired.Load(),
 	}
 
 		w.Header().Set("Content-Type", "application/json")

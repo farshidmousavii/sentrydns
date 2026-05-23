@@ -35,6 +35,10 @@ state_file: "data/.sentrydns-state"
 iran_cb_threshold: 10
 iran_cb_cooldown: 30s
 
+# circuit breaker: open after N consecutive Global failures
+global_cb_threshold: 10
+global_cb_cooldown: 30s
+
 cleanup_initial_delay: 1h
 cleanup_qps: 100
 

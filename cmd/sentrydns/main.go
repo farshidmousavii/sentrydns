@@ -73,11 +73,16 @@ func main() {
 	})
 	slog.Info("metrics server started", "addr", cfg.MetricsAddr)
 
-	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m, cfg.GlobalDNSFallback, cfg.CacheMaxEntries, cfg.IranCBThreshold, 30*time.Second)
+	r := resolver.New(c, s, cfg.IranDNS, cfg.GlobalDNS, slog, cfg.IranTLDs, cfg.HijackIPs, cfg.HijackRanges, cfg.PreferIranDomains, uint32(cfg.MinTTL), uint32(cfg.MaxTTL), m, cfg.GlobalDNSFallback, cfg.CacheMaxEntries, cfg.IranCBThreshold, 30*time.Second, cfg.GlobalCBThreshold, 30*time.Second)
 
 	if cfg.IranCBCooldown != "" {
 		if cooldown, err := time.ParseDuration(cfg.IranCBCooldown); err == nil {
 			r.SetCBCooldown(cooldown)
+		}
+	}
+	if cfg.GlobalCBCooldown != "" {
+		if cooldown, err := time.ParseDuration(cfg.GlobalCBCooldown); err == nil {
+			r.SetGlobalCBCooldown(cooldown)
 		}
 	}
 

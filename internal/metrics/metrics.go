@@ -47,10 +47,18 @@ type Metrics struct {
 	// rate limiting
 	QueriesRateLimited atomic.Int64
 
-	// circuit breaker
+	// circuit breaker — Iran
 	IranCBSkipped atomic.Int64
 	IranCBTrips   atomic.Int64
 	IranCBOpen    atomic.Int64 // gauge: 1 = open/half-open, 0 = closed
+
+	// circuit breaker — Global
+	GlobalCBSkipped atomic.Int64
+	GlobalCBTrips   atomic.Int64
+	GlobalCBOpen    atomic.Int64 // gauge: 1 = open/half-open, 0 = closed
+
+	// shortWait expired before GlobalDNS responded
+	ShortWaitExpired atomic.Int64
 
 	// iran-ranges update
 	LastUpdateTime    atomic.Value // time.Time

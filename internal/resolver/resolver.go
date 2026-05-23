@@ -268,12 +268,14 @@ func (r *Resolver) resolveWithLearning(ctx context.Context, req *dns.Msg, domain
 	defer globalCancel()
 
 	iranOpen := r.iranCb.isOpen()
-	globalOpen := r.globalCb.isOpen()
 	needGlobal := req.Question[0].Qtype == dns.TypeA || req.Question[0].Qtype == dns.TypeAAAA || iranOpen
 
-	globalStarted := needGlobal && !globalOpen
-	if needGlobal && globalOpen {
-		r.metrics.GlobalCBSkipped.Add(1)
+	globalStarted := needGlobal
+	if needGlobal && r.globalCb.isOpen() {
+		if !r.globalCb.tryProbe() {
+			globalStarted = false
+			r.metrics.GlobalCBSkipped.Add(1)
+		}
 	}
 
 	if globalStarted {

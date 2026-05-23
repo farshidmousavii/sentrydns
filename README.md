@@ -136,6 +136,8 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 - ✅ به‌روزرسانی خودکار رنج‌های IP ایران
 - ✅ فال‌بک TCP در صورت Truncated UDP
 - ✅ حذف کوئری‌های تکراری با Singleflight
+- ✅ مدارشکن مجزا برای ایرانDNS و GlobalDNS با قابلیت تنظیم threshold
+- ✅ مشاهده‌پذیری shortWait (شمارنده `short_wait_expired`)
 
 ---
 
@@ -243,6 +245,10 @@ https://github.com/bootmortis/iran-hosted-domains
 | `prefer_iran_domains`         | دامنه‌هایی که از IranDNS IP بهتری می‌گیرند |
 | `iran_ranges_url`             | آدرس به‌روزرسانی خودکار رنج‌های IP ایران   |
 | `iran_ranges_update_interval` | بازه به‌روزرسانی خودکار (پیش‌فرض: ۲۴h)     |
+| `iran_cb_threshold`           | تعداد خطاهای متوالی برای باز کردن مدار ایران |
+| `iran_cb_cooldown`            | مدت زمان قبل از half-open probe ایران (پیش‌فرض: ۳۰s) |
+| `global_cb_threshold`         | تعداد خطاهای متوالی برای باز کردن مدار Global |
+| `global_cb_cooldown`          | مدت زمان قبل از half-open probe Global (پیش‌فرض: ۳۰s) |
 
 ---
 
@@ -414,6 +420,8 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 - ✅ Auto-updater for Iran IP ranges
 - ✅ TCP fallback on truncated UDP
 - ✅ Singleflight deduplication
+- ✅ Independent circuit breakers for IranDNS and GlobalDNS (configurable threshold/cooldown)
+- ✅ shortWait observability (`short_wait_expired` counter)
 
 ---
 
@@ -505,6 +513,10 @@ Edit `config.yaml` to match your environment. A full example is at `config.examp
 | `prefer_iran_domains`         | Domains that resolve better via IranDNS |
 | `iran_ranges_url`             | Auto-update URL for Iran IP ranges      |
 | `iran_ranges_update_interval` | Auto-update interval (default: 24h)     |
+| `iran_cb_threshold`           | IranCB consecutive failures to trip     |
+| `iran_cb_cooldown`            | IranCB duration before half-open probe  |
+| `global_cb_threshold`         | GlobalCB consecutive failures to trip   |
+| `global_cb_cooldown`          | GlobalCB duration before half-open probe|
 
 ---
 

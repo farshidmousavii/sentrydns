@@ -37,10 +37,10 @@ SentryDNS یک پروکسی تطبیقی DNS است که به طور خودکا�
 │  + Learning  │
 └──────┬───────┘
        │
-┌──────▼───────┐      ┌──────────────────┐
-│   query()    │─────►│  circuitBreaker  │
-│  (upstream)  │      │  ایران DNS       │
-└──────┬───────┘      └──────────────────┘
+┌──────▼───────┐      ┌──────────────────┐      ┌──────────────────┐
+│   query()    │─────►│  IranCB          │─────►│  GlobalCB        │
+│  (upstream)  │      │  circuitBreaker  │      │  circuitBreaker  │
+└──────┬───────┘      └──────────────────┘      └──────────────────┘
        │
        ├──► IranDNS  (172.16.0.25)
        └──► GlobalDNS (172.16.0.24)
@@ -113,9 +113,13 @@ resolveWithLearning(ctx, req, domain)
   │
   ├─ تعیین نیاز به GlobalDNS (A/AAAA یا circuit breaker باز)
   │
+  ├─ بررسی GlobalCB:
+  │   ├─ اگر circuit breaker باز است → skip GlobalDNS (ثبت GlobalCBSkipped)
+  │   └─ اگر بسته است → ادامه
+  │
   ├─ راه‌اندازی goroutine‌های موازی:
   │   ├─ IranDNS → r.query(iranCtx, reqCopy, iranDNS)
-  │   └─ GlobalDNS → r.query(globalCtx, reqCopy, globalDNS)
+  │   └─ GlobalDNS → r.query(globalCtx, reqCopy, globalDNS) (در صورت skip نشدن)
   │
   ├─ shortWait = globalTimeout/4 (حداقل ۱۰۰ms)
   │
@@ -133,6 +137,7 @@ resolveWithLearning(ctx, req, domain)
   │   │
   │   └─ context done → SERVFAIL
   │
+  ├─ اگر GlobalCB باز بود و ایران nil → fallback سینکرون به GlobalDNS
   ├─ اگر هر دو nil بودند → fallback سینکرون به GlobalDNS
   │
   └─ هیچ‌کدام جواب نداد → WARN "no suitable upstream" + SERVFAIL
@@ -140,13 +145,21 @@ resolveWithLearning(ctx, req, domain)
 
 ### 4. مدار شکن (resolver.go:47-104)
 
-سه حالت: `cbClosed` (0) ← `cbOpen` (1) ← `cbHalfOpen` (2)
+دو مدارشکن مستقل:
 
+**IranCB** — سه حالت: `cbClosed` (0) ← `cbOpen` (1) ← `cbHalfOpen` (2)
 - در حالت Open، تمام کوئری‌های IranDNS **رد می‌شوند** (Skipped)
 - بعد از `cooldown` (پیش‌فرض ۳۰s)، یک Half-Open probe مجاز است
 - Half-Open success → Closed; failure → Open
 - `recordFailure()`: اگر Half-Open باشد یا threshold رسیده باشد → Open
 - `recordSuccess()`: اگر Half-Open باشد → Closed; اگر Closed باشد → کاهش failures
+
+**GlobalCB** — همان ساختار با ایزوله کامل:
+- در حالت Open، گوروتین GlobalDNS در `resolveWithLearning` **راه‌اندازی نمی‌شود** (Skipped)
+- تعداد skipها در `GlobalCBSkipped` ثبت می‌شود
+- `query()` برای GlobalDNS success/failure را روی GlobalCB ثبت می‌کند
+- آستانهٔ پیش‌فرض: ۱۰ خطا، cooldown: ۳۰s
+- هدف: جلوگیری از سیل کوئری به GlobalDNS وقتی مشکل دارد (کاهش بار upstream)
 
 ### 5. تابع query (resolver.go:536-643)
 
@@ -161,9 +174,10 @@ query(ctx, req, upstream)
   ├─ randDNSID() (اتمیک)
   ├─ ExchangeContext()
   │
-  ├─ ثبت metric:
+  ├─ ثبت metric و circuit breaker:
   │   ├─ Iran: IranQueryCount++, error→IranTimeouts+iranCb.recordFailure()
-  │   └─ Global: GlobalQueryCount++, error→GlobalTimeouts
+  │   └─ Global: GlobalQueryCount++, error→GlobalTimeouts+globalCb.recordFailure()
+  │                           , success→globalCb.recordSuccess()
   │
   ├─ خطا + global fallback → تلاش دوم
   ├─ Truncated → TCP fallback
@@ -192,7 +206,8 @@ type Resolver struct {
     hijackRanges      []netip.Prefix
     preferIran        map[string]bool
     sf                singleflight.Group
-    iranCb            *circuitBreaker
+    iranCb            *circuitBreaker   // مدارشکن ایران DNS
+    globalCb          *circuitBreaker   // مدارشکن Global DNS
     iranAddr, globalAddr string
     stopped           atomic.Bool
     stopCh            chan struct{}
@@ -334,7 +349,8 @@ SIGINT/SIGTERM
 | updater failed                                    | رنج‌های قبلی حفظ می‌شوند                     |
 | upstream flapping                                 | singleflight + jitter جذب می‌کند             |
 | TCP fallback context expired                      | context.WithTimeout جدید برای TCP            |
-| Circuit breaker open                              | IranDNS queries skipped → fallback GlobalDNS |
+| Circuit breaker (Iran) open                              | IranDNS queries skipped → fallback GlobalDNS |
+| Circuit breaker (Global) open                            | GlobalDNS queries skipped → fallback Iran-only, SERVFAIL اگر ایران هم جواب ندهد |
 | Cleanup IranDNS unhealthy                         | پاکسازی انجام نمی‌شود                        |
 
 ### شرط امنیتی بحرانی
@@ -401,6 +417,10 @@ PTR, MX, TXT, CNAME, SOA و کوئری‌های غیر A/AAAA **IP برنمی‌
 
 اگر `digikala.com` یاد گرفته شود، `cdn.digikala.com` نیز از IranDNS استفاده می‌کند.
 
+### 14. GlobalDNS circuit breaker فقط در resolveWithLearning بررسی می‌شود
+
+در مسیرهای TLD، PreferIran و Store، GlobalDNS صرفاً به عنوان fallback استفاده می‌شود — در این مسیرها GlobalCB بررسی نمی‌شود. فقط در `resolveWithLearning` (مسیر Learn) قبل از راه‌اندازی گوروتین GlobalDNS، مدارشکن بررسی می‌شود. این کار تضمین می‌کند دامنه‌های ایرانی حتی اگر GlobalDNS مشکل داشته باشد، به مسیر خود ادامه دهند.
+
 ---
 
 ## تنظیمات کامل (Config Reference)
@@ -431,8 +451,11 @@ iran_ranges_url: "http://..." # URL به‌روزرسانی خودکار
 iran_ranges_update_interval: 24h # بازه به‌روزرسانی
 
 # === Circuit Breaker ===
-iran_cb_threshold: 10 # تعداد خطاهای متوالی برای باز کردن مدار
+iran_cb_threshold: 10 # تعداد خطاهای متوالی برای باز کردن مدار ایران
 iran_cb_cooldown: 30s # مدت زمان قبل از half-open probe
+
+global_cb_threshold: 10 # تعداد خطاهای متوالی برای باز کردن مدار Global
+global_cb_cooldown: 30s # مدت زمان قبل از half-open probe Global
 
 # === فال‌بک ===
 global_dns_fallback: "" # سرور فال‌بک Global (خالی = غیرفعال)
@@ -490,6 +513,10 @@ GET http://localhost:9153/health  → {"status":"ok","uptime":"..."}
 | `iran_cb_open`                     | ۱ = مدار باز است             | ایرانDNS مشکل دارد                 |
 | `iran_cb_skipped`                  | کوئری‌های رد شده             | همبسته با iran_cb_open             |
 | `iran_cb_trips`                    | تعداد باز شدن مدار           | افزایش = مشکل پایدار ایرانDNS      |
+| `global_cb_open`                   | ۱ = مدار Global باز است      | GlobalDNS مشکل دارد                 |
+| `global_cb_skipped`                | GlobalDNS کوئری‌های رد شده   | همبسته با global_cb_open            |
+| `global_cb_trips`                  | تعداد باز شدن مدار Global    | افزایش = مشکل پایدار GlobalDNS      |
+| `short_wait_expired`               | shortWait قبل از GlobalDNS   | GlobalDNS کُندتر از shortWait       |
 | `tcp_fallback_count`               | فال‌بک TCP                   | افزایش = EDNS0 یا MTU مشکل دارد    |
 | `global_fallback_count`            | فال‌بک Global                | افزایش = GlobalDNS مشکل دارد       |
 | `path_tld/prefer_iran/store/learn` | توزیع مسیرها                 | نشان‌دهنده ترکیب ترافیک            |
@@ -622,10 +649,10 @@ SentryDNS is an adaptive DNS proxy that automatically learns whether to route ea
 │  + Learning  │
 └──────┬───────┘
        │
-┌──────▼───────┐      ┌──────────────────┐
-│   query()    │─────►│  circuitBreaker  │
-│  (upstream)  │      │  Iran DNS        │
-└──────┬───────┘      └──────────────────┘
+┌──────▼───────┐      ┌──────────────────┐      ┌──────────────────┐
+│   query()    │─────►│  IranCB          │─────►│  GlobalCB        │
+│  (upstream)  │      │  circuitBreaker  │      │  circuitBreaker  │
+└──────┬───────┘      └──────────────────┘      └──────────────────┘
        │
        ├──► IranDNS  (172.16.0.25)
        └──► GlobalDNS (172.16.0.24)
@@ -698,9 +725,13 @@ resolveWithLearning(ctx, req, domain)
   │
   ├─ Determine if GlobalDNS is needed (A/AAAA or circuit breaker is open)
   │
+  ├─ Check GlobalCB:
+  │   ├─ If circuit breaker is open → skip GlobalDNS (record GlobalCBSkipped)
+  │   └─ If closed → proceed
+  │
   ├─ Launch parallel goroutines:
   │   ├─ IranDNS → r.query(iranCtx, reqCopy, iranDNS)
-  │   └─ GlobalDNS → r.query(globalCtx, reqCopy, globalDNS)
+  │   └─ GlobalDNS → r.query(globalCtx, reqCopy, globalDNS) (if not skipped)
   │
   ├─ shortWait = globalTimeout/4 (minimum 100ms)
   │
@@ -718,6 +749,7 @@ resolveWithLearning(ctx, req, domain)
   │   │
   │   └─ context done → SERVFAIL
   │
+  ├─ If GlobalCB was open and Iran was nil → synchronous fallback to GlobalDNS
   ├─ If both were nil → synchronous fallback to GlobalDNS
   │
   └─ Nothing worked → WARN "no suitable upstream" + SERVFAIL
@@ -725,13 +757,21 @@ resolveWithLearning(ctx, req, domain)
 
 ### 4. Circuit Breaker (resolver.go:47-104)
 
-Three states: `cbClosed` (0) → `cbOpen` (1) → `cbHalfOpen` (2)
+Two independent circuit breakers:
 
+**IranCB** — Three states: `cbClosed` (0) → `cbOpen` (1) → `cbHalfOpen` (2)
 - In Open state, ALL IranDNS queries are **skipped** (counted as `IranCBSkipped`)
 - After `cooldown` (default 30s), one Half-Open probe is allowed
 - Half-Open success → Closed; failure → back to Open
 - `recordFailure()`: if Half-Open or threshold reached → Open
 - `recordSuccess()`: if Half-Open → Closed; if Closed → decrement failures
+
+**GlobalCB** — Same structure, fully isolated:
+- In Open state, the GlobalDNS goroutine in `resolveWithLearning` is **not launched** (skipped)
+- Skips are recorded in `GlobalCBSkipped`
+- `query()` records GlobalDNS success/failure on GlobalCB
+- Default threshold: 10 failures, cooldown: 30s
+- Purpose: prevent querying GlobalDNS during degradation (reduces upstream load)
 
 ### 5. query() function (resolver.go:536-643)
 
@@ -746,9 +786,10 @@ query(ctx, req, upstream)
   ├─ randDNSID() (atomic counter)
   ├─ ExchangeContext()
   │
-  ├─ Record metrics:
+  ├─ Record metrics & circuit breaker:
   │   ├─ Iran: IranQueryCount++, error→IranTimeouts+iranCb.recordFailure()
-  │   └─ Global: GlobalQueryCount++, error→GlobalTimeouts
+  │   └─ Global: GlobalQueryCount++, error→GlobalTimeouts+globalCb.recordFailure()
+  │                           , success→globalCb.recordSuccess()
   │
   ├─ Error + global fallback enabled → retry once
   ├─ Truncated → TCP fallback
@@ -777,7 +818,8 @@ type Resolver struct {
     hijackRanges      []netip.Prefix
     preferIran        map[string]bool
     sf                singleflight.Group
-    iranCb            *circuitBreaker
+    iranCb            *circuitBreaker   // IranDNS circuit breaker
+    globalCb          *circuitBreaker   // GlobalDNS circuit breaker
     iranAddr, globalAddr string
     stopped           atomic.Bool
     stopCh            chan struct{}
@@ -919,7 +961,8 @@ SIGINT/SIGTERM
 | Updater failed                                  | Keep previous ranges                         |
 | Upstream flapping                               | Singleflight + jitter absorb burst           |
 | TCP fallback context expired                    | Fresh context.WithTimeout for TCP            |
-| Circuit breaker open                            | IranDNS queries skipped → fallback GlobalDNS |
+| Circuit breaker (Iran) open                            | IranDNS queries skipped → fallback GlobalDNS |
+| Circuit breaker (Global) open                          | GlobalDNS queries skipped → fallback Iran-only, SERVFAIL if Iran also fails |
 | Cleanup IranDNS unhealthy                       | Cleanup is skipped                           |
 
 ### Critical Security Invariant
@@ -986,6 +1029,10 @@ To reduce IranDNS load, `ValidateDomain` uses only TypeA queries (not AAAA). AAA
 
 Exact IP match first, then CIDR range match. Known hijack IPs: 10.10.34.34-36. Known hijack ranges: 50.7.0.0/16.
 
+### 14. GlobalDNS circuit breaker is checked only in resolveWithLearning
+
+In the TLD, PreferIran, and Store paths, GlobalDNS is used as a fallback only — GlobalCB is NOT checked on these paths. The GlobalCB gate is only applied in `resolveWithLearning` (the Learn path) before launching the GlobalDNS goroutine. This ensures Iranian domains continue working even if GlobalDNS is degraded.
+
 ---
 
 ## Full Configuration Reference
@@ -1016,8 +1063,11 @@ iran_ranges_url: "http://..." # Auto-update URL
 iran_ranges_update_interval: 24h # Update interval
 
 # === Circuit Breaker ===
-iran_cb_threshold: 10 # Consecutive failures to trip CB
+iran_cb_threshold: 10 # Consecutive failures to trip IranCB
 iran_cb_cooldown: 30s # Duration before half-open probe
+
+global_cb_threshold: 10 # Consecutive failures to trip GlobalCB
+global_cb_cooldown: 30s # Duration before GlobalCB half-open probe
 
 # === Fallback ===
 global_dns_fallback: "" # Global fallback DNS (empty = disabled)
@@ -1075,6 +1125,10 @@ GET http://localhost:9153/health  → {"status":"ok","uptime":"..."}
 | `iran_cb_open`                     | 1 = circuit is open   | IranDNS is having issues             |
 | `iran_cb_skipped`                  | Skipped queries       | Correlates with iran_cb_open         |
 | `iran_cb_trips`                    | CB open count         | Increase = persistent IranDNS issues |
+| `global_cb_open`                   | 1 = GlobalCB is open  | GlobalDNS is having issues            |
+| `global_cb_skipped`                | GlobalDNS skips       | Correlates with global_cb_open        |
+| `global_cb_trips`                  | GlobalCB open count   | Increase = persistent GlobalDNS issues|
+| `short_wait_expired`               | shortWait before Global| GlobalDNS slower than shortWait      |
 | `tcp_fallback_count`               | TCP fallbacks         | Increase = EDNS0/MTU issues          |
 | `global_fallback_count`            | Global fallbacks      | Increase = GlobalDNS issues          |
 | `path_tld/prefer_iran/store/learn` | Path distribution     | Shows traffic composition            |

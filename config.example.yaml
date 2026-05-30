@@ -36,17 +36,17 @@ iran_cb_threshold: 10
 iran_cb_cooldown: 30s
 
 # circuit breaker: open after N consecutive Global failures
-global_cb_threshold: 10
+global_cb_threshold: 30
 global_cb_cooldown: 30s
 
 cleanup_initial_delay: 1h
 cleanup_qps: 100
 
 # Global DNS timeout in seconds (separate from main timeout, applied only to global upstream)
-global_dns_timeout: 1.5
+global_dns_timeout: 10
 
-# Optional fallback DNS for global queries (empty = disabled, e.g. "8.8.8.8")
-global_dns_fallback: ""
+# Optional fallback DNS for global queries (empty = disabled)
+global_dns_fallback: "8.8.8.8"
 
 # Scheduled cleanup time (HH:MM format, 24h). Runs daily at this wall-clock time.
 # Falls back to cleanup_initial_delay + 24h interval if left empty.

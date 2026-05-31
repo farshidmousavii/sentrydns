@@ -529,7 +529,10 @@ func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dn
 	if r.store.IsIran(domain) {
 		r.metrics.PathStore.Add(1)
 		reqCopy := req.Copy()
-		resp := r.queryIranDNS(queryCtx, reqCopy)
+		// Bypass IranCB for learned domains: we already know they're Iranian, so a SERVFAIL
+		// from GlobalDNS (which can't resolve Iran-specific domains) is worse than querying
+		// IranDNS directly. The CB is still updated with real success/failure for monitoring.
+		resp := r.query(queryCtx, reqCopy, r.iranDNS)
 		if resp != nil && resp.Rcode == dns.RcodeNameError {
 			r.log.Warn("nxdomain for store domain, removing and relearning", "domain", domain)
 			r.store.Remove(domain)

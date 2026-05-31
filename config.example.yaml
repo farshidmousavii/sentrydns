@@ -32,7 +32,7 @@ iran_ranges_update_interval: 24h
 state_file: "data/.sentrydns-state"
 
 # circuit breaker: open after N consecutive Iran failures
-iran_cb_threshold: 10
+iran_cb_threshold: 30
 iran_cb_cooldown: 30s
 
 # circuit breaker: open after N consecutive Global failures

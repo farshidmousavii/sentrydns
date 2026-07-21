@@ -17,7 +17,6 @@
 SentryDNS به صورت خودکار مسیریابی بهینه را یاد می‌گیرد، پاسخ‌های DNS مشکوک را تشخیص می‌دهد، CDN بهتری برای سرویس‌های ایرانی فراهم می‌کند و مدیریت لیست‌های استاتیک Split-DNS را حذف می‌کند.
 
 > **📥 دانلود نسخه v1.0.0**  
-> [`sentrydns` (12 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns)  
 > [`sentrydns-v1.0.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz)  
 > شامل: باینری + فایل‌های سرویس systemd + اسکریپت نصب + تنظیمات
 
@@ -134,7 +133,7 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 - **NXDOMAIN بازنویسی شده** → ایران ممکن است NXDOMAIN برگرداند؛ با GlobalDNS cross-validate می‌شود
 - **Wildcard DNS مسموم** → wildcardهای مخرب توسط فیلتر hijack حذف می‌شوند
 - **ECS divergence** → IranDNS و GlobalDNS ممکن است موقعیت‌های متفاوتی ببینند؛ یادگیری تدریجی مسئله را حل می‌کند
-- **CDN geolocation不一致** → هر سرور بالادستی CDN متفاوتی برگرداند؛ مسیر بهینه یاد گرفته می‌شود
+- **CDN geolocation** → هر سرور بالادستی CDN متفاوتی برگرداند؛ مسیر بهینه یاد گرفته می‌شود
 - **IPهای تحریمی/مسدود** در لایه فیلترینگ پاسخ حذف می‌شوند
 - **تذکر:** دسته‌بندی IP بر اساس کامل بودن و به‌روزرسانی فایل رنج‌های ایران است
 

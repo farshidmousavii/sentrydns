@@ -4,6 +4,12 @@
   <a href="#en">🇬🇧 English</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-0b8a42" alt="v1.0.0"></a>
+  <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
+  <a href="https://github.com/farshidmousavii/sentrydns/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"></a>
+</p>
+
 <div dir="rtl" lang="fa">
 
 **پروکسی هوشمند DNS با یادگیری خودکار — بدون نیاز به مدیریت دستی لیست دامنه‌ها**
@@ -158,7 +164,7 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 <div dir="ltr">
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/farshidmousavii/sentrydns.git
 cd sentrydns
 
 make download-ranges
@@ -299,6 +305,12 @@ make deploy SERVER=user@server-ip
 <a name="en"></a>
 
 # SentryDNS
+
+<p align="center">
+  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-0b8a42" alt="v1.0.0"></a>
+  <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
+  <a href="https://github.com/farshidmousavii/sentrydns/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"></a>
+</p>
 
 **Adaptive DNS proxy with automatic learning — zero manual domain list management.**
 
@@ -442,7 +454,7 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 ## Quick Install
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/farshidmousavii/sentrydns.git
 cd sentrydns
 
 make download-ranges
@@ -551,3 +563,29 @@ sudo journalctl -u sentrydns -f
 ```bash
 make deploy SERVER=user@server-ip
 ```
+
+---
+
+## Releases
+
+Pre-built binaries are available on the [releases page](https://github.com/farshidmousavii/sentrydns/releases).
+
+Each release includes:
+- **sentrydns** — the DNS proxy binary (Linux amd64)
+- **sentrydns.service** — systemd unit file
+- **sentrydps.service** — diagnostic probe service
+- **config.example.yaml** — full configuration reference
+
+```bash
+# Download latest release
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns
+chmod +x sentrydns
+sudo mv sentrydns /opt/sentrydns/
+sudo systemctl restart sentrydns
+```
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.

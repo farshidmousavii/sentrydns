@@ -16,6 +16,11 @@
 
 SentryDNS به صورت خودکار مسیریابی بهینه را یاد می‌گیرد، پاسخ‌های DNS مشکوک را تشخیص می‌دهد، CDN بهتری برای سرویس‌های ایرانی فراهم می‌کند و مدیریت لیست‌های استاتیک Split-DNS را حذف می‌کند.
 
+> **📥 دانلود نسخه v1.0.0**  
+> [`sentrydns` (12 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns)  
+> [`sentrydns-v1.0.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz)  
+> شامل: باینری + `config.example.yaml` + اسکریپت پروب
+
 ---
 
 ## معرفی
@@ -163,6 +168,16 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 
 <div dir="ltr">
 
+**گزینه ۱ — دریافت باینری آماده (سریع‌تر):**
+
+```bash
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns
+chmod +x sentrydns
+sudo mv sentrydns /opt/sentrydns/
+```
+
+**گزینه ۲ — کامپایل از سورس:**
+
 ```bash
 git clone https://github.com/farshidmousavii/sentrydns.git
 cd sentrydns
@@ -296,9 +311,22 @@ make deploy SERVER=user@server-ip
 
 </div>
 
+---
+
+## انتشار نسخه‌ها
+
+<div dir="rtl">
+
+باینری‌های آماده در [صفحه انتشار](https://github.com/farshidmousavii/sentrydns/releases) در دسترس هستند.
+
+هر نسخه شامل:
+- **sentrydns** — باینری پروکسی DNS (لینوکس amd64)
+- **config.example.yaml** — مرجع کامل تنظیمات
+- **sentrydps.sh** — اسکریپت پروب تشخیصی
+
 </div>
 
----
+</div>
 
 ---
 
@@ -453,6 +481,16 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 
 ## Quick Install
 
+**Option 1 — Download pre-built binary (faster):**
+
+```bash
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns
+chmod +x sentrydns
+sudo mv sentrydns /opt/sentrydns/
+```
+
+**Option 2 — Build from source:**
+
 ```bash
 git clone https://github.com/farshidmousavii/sentrydns.git
 cd sentrydns
@@ -572,9 +610,8 @@ Pre-built binaries are available on the [releases page](https://github.com/farsh
 
 Each release includes:
 - **sentrydns** — the DNS proxy binary (Linux amd64)
-- **sentrydns.service** — systemd unit file
-- **sentrydps.service** — diagnostic probe service
 - **config.example.yaml** — full configuration reference
+- **sentrydps.sh** — diagnostic probe script
 
 ```bash
 # Download latest release

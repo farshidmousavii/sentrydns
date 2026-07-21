@@ -1,5 +1,9 @@
 # SentryDNS
 
+<p align="left">
+  <a href="#en">🇬🇧 English</a>
+</p>
+
 <div dir="rtl" lang="fa">
 
 **پروکسی هوشمند DNS با یادگیری خودکار — بدون نیاز به مدیریت دستی لیست دامنه‌ها**
@@ -291,6 +295,8 @@ make deploy SERVER=user@server-ip
 ---
 
 ---
+
+<a name="en"></a>
 
 # SentryDNS
 

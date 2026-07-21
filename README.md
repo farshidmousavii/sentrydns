@@ -19,7 +19,7 @@ SentryDNS به صورت خودکار مسیریابی بهینه را یاد م�
 > **📥 دانلود نسخه v1.0.0**  
 > [`sentrydns` (12 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns)  
 > [`sentrydns-v1.0.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz)  
-> شامل: باینری + `config.example.yaml` + اسکریپت پروب
+> شامل: باینری + فایل‌های سرویس systemd + اسکریپت نصب + تنظیمات
 
 ---
 
@@ -168,12 +168,12 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 
 <div dir="ltr">
 
-**گزینه ۱ — دریافت باینری آماده (سریع‌تر):**
+**گزینه ۱ — دریافت بسته آماده (سریع‌تر):**
 
 ```bash
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns
-chmod +x sentrydns
-sudo mv sentrydns /opt/sentrydns/
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz
+tar xzf sentrydns-v1.0.0.tar.gz
+sudo bash install.sh
 ```
 
 **گزینه ۲ — کامپایل از سورس:**
@@ -321,8 +321,12 @@ make deploy SERVER=user@server-ip
 
 هر نسخه شامل:
 - **sentrydns** — باینری پروکسی DNS (لینوکس amd64)
-- **config.example.yaml** — مرجع کامل تنظیمات
+- **sentrydns.service** — فایل سرویس systemd
+- **sentrydps.service** — فایل سرویس پروب تشخیصی
+- **install.sh** — اسکریپت نصب خودکار (ساخت سرویس systemd + نصب باینری)
+- **uninstall.sh** — اسکریپت حذف
 - **sentrydps.sh** — اسکریپت پروب تشخیصی
+- **config.example.yaml** — مرجع کامل تنظیمات
 
 </div>
 
@@ -481,12 +485,12 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 
 ## Quick Install
 
-**Option 1 — Download pre-built binary (faster):**
+**Option 1 — Download release tarball (faster):**
 
 ```bash
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns
-chmod +x sentrydns
-sudo mv sentrydns /opt/sentrydns/
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz
+tar xzf sentrydns-v1.0.0.tar.gz
+sudo bash install.sh
 ```
 
 **Option 2 — Build from source:**
@@ -610,15 +614,18 @@ Pre-built binaries are available on the [releases page](https://github.com/farsh
 
 Each release includes:
 - **sentrydns** — the DNS proxy binary (Linux amd64)
-- **config.example.yaml** — full configuration reference
+- **sentrydns.service** — systemd unit file for the DNS proxy
+- **sentrydps.service** — systemd unit file for the diagnostic probe
+- **install.sh** — automated install script (sets up systemd services, copies binary)
+- **uninstall.sh** — uninstall script
 - **sentrydps.sh** — diagnostic probe script
+- **config.example.yaml** — full configuration reference
 
 ```bash
-# Download latest release
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns
-chmod +x sentrydns
-sudo mv sentrydns /opt/sentrydns/
-sudo systemctl restart sentrydns
+# Download and install latest release
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz
+tar xzf sentrydns-v1.0.0.tar.gz
+sudo bash install.sh
 ```
 
 ---

@@ -1,0 +1,16 @@
+[Unit]
+Description=SentryDNS - Intelligent Iran/Global DNS Routing
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sentrydns
+ExecStart=/opt/sentrydns/sentrydns -config /opt/sentrydns/config.yaml
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

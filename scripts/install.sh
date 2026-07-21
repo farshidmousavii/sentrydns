@@ -44,25 +44,7 @@ fi
 
 echo "==> Installing systemd services..."
 
-cat > /etc/systemd/system/$SERVICE_NAME.service << EOF
-[Unit]
-Description=SentryDNS - Intelligent Iran/Global DNS Routing
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/sentrydns
-ExecStart=/opt/sentrydns/sentrydns -config /opt/sentrydns/config.yaml
-Restart=always
-RestartSec=3
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
+cp scripts/sentrydns.service /etc/systemd/system/sentrydns.service
 cp scripts/sentrydps.service /etc/systemd/system/sentrydps.service
 
 echo "==> Reloading systemd..."

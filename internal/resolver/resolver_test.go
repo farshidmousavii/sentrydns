@@ -18,14 +18,14 @@ import (
 )
 
 type mockDNSHandler struct {
-	responses   map[string]mockResponse
-	callCount   int32
+	responses map[string]mockResponse
+	callCount int32
 }
 
 type mockResponse struct {
-	ip      string
-	rcode   int
-	delay   time.Duration
+	ip    string
+	rcode int
+	delay time.Duration
 }
 
 func startFlexibleMockDNS(t *testing.T, handler *mockDNSHandler) string {
@@ -160,7 +160,7 @@ func TestIranDomain(t *testing.T) {
 	m2 := metrics.New()
 	r2 := New(r.classifier, s, iranAddr, globalAddr, discardLog, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600, m2, "", 0, 5, time.Second, 5, time.Second)
 
-	resp = 	r2.Resolve(context.Background(), req)
+	resp = r2.Resolve(context.Background(), req)
 	if resp == nil || resp.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected success on second query using store")
 	}
@@ -409,6 +409,45 @@ func TestStaticRecord(t *testing.T) {
 	}
 	if r.metrics.PathStatic.Load() != 1 {
 		t.Errorf("PathStatic = %d, want 1", r.metrics.PathStatic.Load())
+	}
+}
+
+func TestStaticRecordWinsOverCache(t *testing.T) {
+	// Regression: a pinned static record must win over a previously learned
+	// (cached) answer. Before the fix, cache was consulted before the static
+	// lookup, so the cached upstream IP shadowed the static record.
+	addr := startMockDNS(t, map[string]string{
+		"internal.example.com.": "142.250.0.1",
+	})
+	r, _ := newTestResolver(t, addr, addr, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600)
+
+	// First resolve normally so the upstream answer gets cached.
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn("internal.example.com"), dns.TypeA)
+	resp := r.Resolve(context.Background(), req)
+	if resp == nil || resp.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected success via normal routing")
+	}
+	ips := extractIPs(resp)
+	if len(ips) != 1 || ips[0] != "142.250.0.1" {
+		t.Fatalf("expected upstream IP 142.250.0.1, got %v", ips)
+	}
+
+	// Now pin the domain statically. Cache still holds the learned answer.
+	r.SetStaticRecords(map[string]string{"internal.example.com": "10.0.0.5"})
+
+	req2 := new(dns.Msg)
+	req2.SetQuestion(dns.Fqdn("internal.example.com"), dns.TypeA)
+	resp2 := r.Resolve(context.Background(), req2)
+	if resp2 == nil || resp2.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected success for static record")
+	}
+	ips2 := extractIPs(resp2)
+	if len(ips2) != 1 || ips2[0] != "10.0.0.5" {
+		t.Errorf("expected static IP 10.0.0.5, got %v (cached answer shadowed static record)", ips2)
+	}
+	if r.metrics.PathStatic.Load() == 0 {
+		t.Errorf("PathStatic = 0, want > 0 (static must win over cache)")
 	}
 }
 

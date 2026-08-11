@@ -447,13 +447,22 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	}
 
 	r.metrics.QueriesTotal.Add(1)
+
+	domain := req.Question[0].Name
+
+	// Static records are authoritative: answer before consulting the cache so a
+	// previously learned/cached answer can never shadow a pinned record.
+	if ip, ok := r.staticLookup(domain); ok && req.Question[0].Qtype == dns.TypeA {
+		r.metrics.PathStatic.Add(1)
+		return r.staticResponse(req, ip)
+	}
+
 	if cached := r.cache.Get(req); cached != nil {
 		r.metrics.QueriesCached.Add(1)
 		return cached
 	}
 	r.metrics.CacheMiss.Add(1)
 
-	domain := req.Question[0].Name
 	origID := req.Id
 	key := strings.ToLower(domain) + ":" + dns.TypeToString[req.Question[0].Qtype]
 
@@ -508,26 +517,25 @@ func (r *Resolver) staticLookup(domain string) (netip.Addr, bool) {
 	return ip, ok
 }
 
+func (r *Resolver) staticResponse(req *dns.Msg, ip netip.Addr) *dns.Msg {
+	resp := new(dns.Msg)
+	resp.SetReply(req)
+	resp.Authoritative = true
+	resp.Answer = append(resp.Answer, &dns.A{
+		Hdr: dns.RR_Header{
+			Name:   req.Question[0].Name,
+			Rrtype: dns.TypeA,
+			Class:  dns.ClassINET,
+			Ttl:    300,
+		},
+		A: ip.AsSlice(),
+	})
+	return resp
+}
+
 func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dns.Msg {
 	queryCtx, queryCancel := context.WithCancel(ctx)
 	defer queryCancel()
-
-	if ip, ok := r.staticLookup(domain); ok && req.Question[0].Qtype == dns.TypeA {
-		r.metrics.PathStatic.Add(1)
-		resp := new(dns.Msg)
-		resp.SetReply(req)
-		resp.Authoritative = true
-		resp.Answer = append(resp.Answer, &dns.A{
-			Hdr: dns.RR_Header{
-				Name:   req.Question[0].Name,
-				Rrtype: dns.TypeA,
-				Class:  dns.ClassINET,
-				Ttl:    300,
-			},
-			A: ip.AsSlice(),
-		})
-		return resp
-	}
 
 	if r.isIranTLD(domain) {
 		r.metrics.PathTLD.Add(1)

@@ -127,6 +127,7 @@ type Resolver struct {
 	hijackIPs         map[string]bool
 	hijackRanges      []netip.Prefix
 	preferIran        map[string]bool
+	staticRecords     map[string]netip.Addr
 	sf                singleflight.Group
 	iranCb            *circuitBreaker
 	globalCb          *circuitBreaker
@@ -174,6 +175,7 @@ func New(c *classifier.Classifier, s *store.Store, iranDNS, globalDNS string, lo
 		hijackIPs:         hijacks,
 		hijackRanges:      ranges,
 		preferIran:        preferIran,
+		staticRecords:     make(map[string]netip.Addr),
 		iranAddr:          resolveAddr(iranDNS),
 		globalAddr:        resolveAddr(globalDNS),
 		iranCb: &circuitBreaker{
@@ -488,9 +490,44 @@ func (r *Resolver) Resolve(ctx context.Context, req *dns.Msg) *dns.Msg {
 	return resp
 }
 
+func (r *Resolver) SetStaticRecords(records map[string]string) {
+	m := make(map[string]netip.Addr, len(records))
+	for domain, ipStr := range records {
+		if ip, err := netip.ParseAddr(ipStr); err == nil {
+			m[strings.ToLower(dns.Fqdn(domain))] = ip
+		}
+	}
+	r.staticRecords = m
+}
+
+func (r *Resolver) staticLookup(domain string) (netip.Addr, bool) {
+	// ponytail: exact FQDN match only. Subdomain inheritance for static
+	// records is intentionally skipped — a pinned record is authoritative.
+	// Add walk-up matching only if a user requests wildcard-style overrides.
+	ip, ok := r.staticRecords[strings.ToLower(domain)]
+	return ip, ok
+}
+
 func (r *Resolver) resolve(ctx context.Context, req *dns.Msg, domain string) *dns.Msg {
 	queryCtx, queryCancel := context.WithCancel(ctx)
 	defer queryCancel()
+
+	if ip, ok := r.staticLookup(domain); ok && req.Question[0].Qtype == dns.TypeA {
+		r.metrics.PathStatic.Add(1)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = append(resp.Answer, &dns.A{
+			Hdr: dns.RR_Header{
+				Name:   req.Question[0].Name,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    300,
+			},
+			A: ip.AsSlice(),
+		})
+		return resp
+	}
 
 	if r.isIranTLD(domain) {
 		r.metrics.PathTLD.Add(1)

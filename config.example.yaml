@@ -27,6 +27,12 @@ prefer_iran_domains:
   - "google.com"
   - "easy4ipcloud.com"
 
+# Optional static A records — answered directly, never forwarded to upstreams.
+# Exact FQDN match only. AAAA and other query types fall through to normal routing.
+static_records:
+  "internal.example.com": "10.0.0.5"
+  "vpn.example.com": "192.168.1.10"
+
 iran_ranges_url: "http://example.com/ranges.txt"
 iran_ranges_update_interval: 24h
 state_file: "data/.sentrydns-state"

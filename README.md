@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-0b8a42" alt="v1.0.0"></a>
+  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/release-v1.1.0-0b8a42" alt="v1.1.0"></a>
   <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
   <a href="https://github.com/farshidmousavii/sentrydns/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"></a>
 </p>
@@ -16,8 +16,10 @@
 
 SentryDNS به صورت خودکار مسیریابی بهینه را یاد می‌گیرد، پاسخ‌های DNS مشکوک را تشخیص می‌دهد، CDN بهتری برای سرویس‌های ایرانی فراهم می‌کند و مدیریت لیست‌های استاتیک Split-DNS را حذف می‌کند.
 
-> **📥 دانلود نسخه v1.0.0**  
-> [`sentrydns-v1.0.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz)  
+> **📥 دانلود نسخه v1.1.0**  
+> [`sentrydns` (12 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns)  
+> [`sentrydns-v1.1.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz)  
+> شامل: باینری + فایل‌های سرویس systemd + اسکریپت نصب + تنظیمات
 > شامل: باینری + فایل‌های سرویس systemd + اسکریپت نصب + تنظیمات
 
 ---
@@ -170,8 +172,8 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 **گزینه ۱ — دریافت بسته آماده (سریع‌تر):**
 
 ```bash
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz
-tar xzf sentrydns-v1.0.0.tar.gz
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz
+tar xzf sentrydns-v1.1.0.tar.gz
 sudo bash install.sh
 ```
 
@@ -267,12 +269,27 @@ https://github.com/bootmortis/iran-hosted-domains
 | `hijack_ips`                  | IPهای مسدود/تحریمی                         |
 | `hijack_ranges`               | رنج‌های IP مسدود/تحریمی                    |
 | `prefer_iran_domains`         | دامنه‌هایی که از IranDNS IP بهتری می‌گیرند |
+| `static_records`              | رکوردهای A ثابت — مستقیم پاسخ داده می‌شوند و به بالادست ارسال نمی‌شوند |
 | `iran_ranges_url`             | آدرس به‌روزرسانی خودکار رنج‌های IP ایران   |
 | `iran_ranges_update_interval` | بازه به‌روزرسانی خودکار (پیش‌فرض: ۲۴h)     |
 | `iran_cb_threshold`           | تعداد خطاهای متوالی برای باز کردن مدار ایران |
 | `iran_cb_cooldown`            | مدت زمان قبل از half-open probe ایران (پیش‌فرض: ۳۰s) |
 | `global_cb_threshold`         | تعداد خطاهای متوالی برای باز کردن مدار Global |
 | `global_cb_cooldown`          | مدت زمان قبل از half-open probe Global (پیش‌فرض: ۳۰s) |
+
+### رکوردهای استاتیک
+
+برای دامنه‌هایی که باید همیشه به یک IP مشخص برسند، از `static_records` استفاده کنید:
+
+```yaml
+static_records:
+  "internal.example.com": "10.0.0.5"
+  "vpn.example.com": "192.168.1.10"
+```
+
+- فقط کوئری‌های A پاسخ داده می‌شوند؛ AAAA و سایر نوع‌ها مسیر عادی را طی می‌کنند
+- تطبیق دقیق FQDN — ساب‌دامنه‌ها ارث نمی‌برند
+- پاسخ مستقیم از حافظه، بدون ارسال به سرورهای بالادستی
 
 ---
 
@@ -338,7 +355,7 @@ make deploy SERVER=user@server-ip
 # SentryDNS
 
 <p align="center">
-  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/release-v1.0.0-0b8a42" alt="v1.0.0"></a>
+  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/release-v1.1.0-0b8a42" alt="v1.1.0"></a>
   <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
   <a href="https://github.com/farshidmousavii/sentrydns/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"></a>
 </p>
@@ -471,6 +488,7 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 - ✅ Singleflight deduplication
 - ✅ Independent circuit breakers for IranDNS and GlobalDNS (configurable threshold/cooldown)
 - ✅ shortWait observability (`short_wait_expired` counter)
+- ✅ Static A records (`static_records` config) answered directly, bypassing upstreams
 
 ---
 
@@ -487,8 +505,8 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 **Option 1 — Download release tarball (faster):**
 
 ```bash
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz
-tar xzf sentrydns-v1.0.0.tar.gz
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz
+tar xzf sentrydns-v1.1.0.tar.gz
 sudo bash install.sh
 ```
 
@@ -570,12 +588,27 @@ Edit `config.yaml` to match your environment. A full example is at `config.examp
 | `hijack_ips`                  | Blocked/sanctioned IPs                  |
 | `hijack_ranges`               | Blocked/sanctioned IP ranges            |
 | `prefer_iran_domains`         | Domains that resolve better via IranDNS |
+| `static_records`              | Static A records — answered directly, never forwarded upstream |
 | `iran_ranges_url`             | Auto-update URL for Iran IP ranges      |
 | `iran_ranges_update_interval` | Auto-update interval (default: 24h)     |
 | `iran_cb_threshold`           | IranCB consecutive failures to trip     |
 | `iran_cb_cooldown`            | IranCB duration before half-open probe  |
 | `global_cb_threshold`         | GlobalCB consecutive failures to trip   |
 | `global_cb_cooldown`          | GlobalCB duration before half-open probe|
+
+### Static Records
+
+For domains that must always resolve to a fixed IP, use `static_records`:
+
+```yaml
+static_records:
+  "internal.example.com": "10.0.0.5"
+  "vpn.example.com": "192.168.1.10"
+```
+
+- Only A queries are answered; AAAA and other types take the normal routing path
+- Exact FQDN match only — subdomains do not inherit
+- Answered directly from memory, never sent to upstreams
 
 ---
 
@@ -622,8 +655,8 @@ Each release includes:
 
 ```bash
 # Download and install latest release
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.0.0/sentrydns-v1.0.0.tar.gz
-tar xzf sentrydns-v1.0.0.tar.gz
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz
+tar xzf sentrydns-v1.1.0.tar.gz
 sudo bash install.sh
 ```
 

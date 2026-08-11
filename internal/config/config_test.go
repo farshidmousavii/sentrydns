@@ -207,3 +207,38 @@ max_ttl: 300
 		t.Error("expected validation error for min_ttl > max_ttl")
 	}
 }
+
+func TestLoadStaticRecords(t *testing.T) {
+	yaml := `
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
+static_records:
+  "internal.example.com": "10.0.0.5"
+  "vpn.example.com": "192.168.1.10"
+`
+	path := writeConfig(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.StaticRecords) != 2 {
+		t.Fatalf("StaticRecords = %v, want 2 entries", cfg.StaticRecords)
+	}
+	if cfg.StaticRecords["internal.example.com"] != "10.0.0.5" {
+		t.Errorf("StaticRecords[internal.example.com] = %q", cfg.StaticRecords["internal.example.com"])
+	}
+}
+
+func TestValidateInvalidStaticRecord(t *testing.T) {
+	yaml := `
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
+static_records:
+  "bad.example.com": "not-an-ip"
+`
+	path := writeConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected validation error for invalid static record IP")
+	}
+}

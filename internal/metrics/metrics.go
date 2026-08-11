@@ -25,6 +25,7 @@ type Metrics struct {
 	PathPreferIran atomic.Int64
 	PathStore      atomic.Int64
 	PathLearn      atomic.Int64
+	PathStatic     atomic.Int64
 
 	// per-upstream latency & errors
 	IranLatencyTotal   atomic.Int64

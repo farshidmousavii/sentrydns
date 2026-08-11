@@ -2,8 +2,11 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -39,6 +42,7 @@ type Config struct {
 	IranCBCooldown           string   `yaml:"iran_cb_cooldown"`
 	GlobalCBThreshold        int      `yaml:"global_cb_threshold"`
 	GlobalCBCooldown         string   `yaml:"global_cb_cooldown"`
+	StaticRecords            map[string]string `yaml:"static_records"`
 }
 
 func defaultConfig() Config {
@@ -127,6 +131,14 @@ func (c *Config) Validate() error {
 	}
 	if c.GlobalDNSTimeout <= 0 {
 		return errors.New("global_dns_timeout must be positive")
+	}
+	for domain, ip := range c.StaticRecords {
+		if strings.TrimSpace(domain) == "" {
+			return errors.New("static_records contains an empty domain")
+		}
+		if net.ParseIP(ip) == nil {
+			return fmt.Errorf("static_records[%s] is not a valid IP: %q", domain, ip)
+		}
 	}
 	return nil
 }

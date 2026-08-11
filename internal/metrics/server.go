@@ -31,6 +31,7 @@ type response struct {
 	PathPreferIran    int64  `json:"path_prefer_iran"`
 	PathStore         int64  `json:"path_store"`
 	PathLearn         int64  `json:"path_learn"`
+	PathStatic        int64  `json:"path_static"`
 	IranAvgLatencyMs  int64  `json:"iran_avg_latency_ms"`
 	IranTimeouts      int64  `json:"iran_timeouts"`
 	GlobalAvgLatencyMs int64 `json:"global_avg_latency_ms"`
@@ -102,6 +103,7 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 			PathPreferIran:    m.PathPreferIran.Load(),
 			PathStore:         m.PathStore.Load(),
 			PathLearn:         m.PathLearn.Load(),
+			PathStatic:        m.PathStatic.Load(),
 			IranAvgLatencyMs:  iranAvg,
 			IranTimeouts:      m.IranTimeouts.Load(),
 			GlobalAvgLatencyMs: globalAvg,

@@ -390,3 +390,66 @@ func TestPTRSkipsClassification(t *testing.T) {
 		t.Fatal("expected success for PTR query")
 	}
 }
+
+func TestStaticRecord(t *testing.T) {
+	// upstreams return NXDOMAIN — static path must win without touching them
+	addr := startMockDNS(t, map[string]string{})
+	r, _ := newTestResolver(t, addr, addr, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600)
+	r.SetStaticRecords(map[string]string{"internal.example.com": "10.0.0.5"})
+
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn("internal.example.com"), dns.TypeA)
+	resp := r.Resolve(context.Background(), req)
+	if resp == nil || resp.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected success for static record")
+	}
+	ips := extractIPs(resp)
+	if len(ips) != 1 || ips[0] != "10.0.0.5" {
+		t.Errorf("expected static IP 10.0.0.5, got %v", ips)
+	}
+	if r.metrics.PathStatic.Load() != 1 {
+		t.Errorf("PathStatic = %d, want 1", r.metrics.PathStatic.Load())
+	}
+}
+
+func TestStaticRecordSubdomainDoesNotMatch(t *testing.T) {
+	// exact FQDN match only; subdomains fall through to normal routing
+	addr := startMockDNS(t, map[string]string{
+		"api.internal.example.com.": "142.250.0.1",
+	})
+	r, _ := newTestResolver(t, addr, addr, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600)
+	r.SetStaticRecords(map[string]string{"internal.example.com": "10.0.0.5"})
+
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn("api.internal.example.com"), dns.TypeA)
+	resp := r.Resolve(context.Background(), req)
+	if resp == nil || resp.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected success via normal routing")
+	}
+	ips := extractIPs(resp)
+	if len(ips) != 1 || ips[0] != "142.250.0.1" {
+		t.Errorf("expected upstream IP 142.250.0.1, got %v", ips)
+	}
+	if r.metrics.PathStatic.Load() != 0 {
+		t.Errorf("PathStatic = %d, want 0 (no subdomain inheritance)", r.metrics.PathStatic.Load())
+	}
+}
+
+func TestStaticRecordAAAAFallsThrough(t *testing.T) {
+	// static record answers A only; AAAA goes through normal routing
+	addr := startMockDNS(t, map[string]string{
+		"internal.example.com.": "142.250.0.1",
+	})
+	r, _ := newTestResolver(t, addr, addr, testIranTLDs, testHijackIPs, testHijackRanges, nil, 300, 3600)
+	r.SetStaticRecords(map[string]string{"internal.example.com": "10.0.0.5"})
+
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn("internal.example.com"), dns.TypeAAAA)
+	resp := r.Resolve(context.Background(), req)
+	if resp == nil || resp.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected success via normal routing for AAAA")
+	}
+	if r.metrics.PathStatic.Load() != 0 {
+		t.Errorf("PathStatic = %d, want 0 for AAAA query", r.metrics.PathStatic.Load())
+	}
+}

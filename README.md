@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/release-v1.1.0-0b8a42" alt="v1.1.0"></a>
+  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.2.0"><img src="https://img.shields.io/badge/release-v1.2.0-0b8a42" alt="v1.2.0"></a>
   <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
   <a href="https://github.com/farshidmousavii/sentrydns/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"></a>
 </p>
@@ -16,9 +16,9 @@
 
 SentryDNS به صورت خودکار مسیریابی بهینه را یاد می‌گیرد، پاسخ‌های DNS مشکوک را تشخیص می‌دهد، CDN بهتری برای سرویس‌های ایرانی فراهم می‌کند و مدیریت لیست‌های استاتیک Split-DNS را حذف می‌کند.
 
-> **📥 دانلود نسخه v1.1.0**  
-> [`sentrydns` (12 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns)  
-> [`sentrydns-v1.1.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz)  
+> **📥 دانلود نسخه v1.2.0**  
+> [`sentrydns` (12 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.2.0/sentrydns)  
+> [`sentrydns-v1.2.0.tar.gz` (6.4 مگابایت)](https://github.com/farshidmousavii/sentrydns/releases/download/v1.2.0/sentrydns-v1.2.0.tar.gz)  
 > شامل: باینری + فایل‌های سرویس systemd + اسکریپت نصب + تنظیمات
 > شامل: باینری + فایل‌های سرویس systemd + اسکریپت نصب + تنظیمات
 
@@ -175,8 +175,8 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 **گزینه ۱ — دریافت بسته آماده (سریع‌تر):**
 
 ```bash
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz
-tar xzf sentrydns-v1.1.0.tar.gz
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.2.0/sentrydns-v1.2.0.tar.gz
+tar xzf sentrydns-v1.2.0.tar.gz
 sudo bash install.sh
 ```
 
@@ -391,7 +391,7 @@ make deploy SERVER=user@server-ip
 # SentryDNS
 
 <p align="center">
-  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.1.0"><img src="https://img.shields.io/badge/release-v1.1.0-0b8a42" alt="v1.1.0"></a>
+  <a href="https://github.com/farshidmousavii/sentrydns/releases/tag/v1.2.0"><img src="https://img.shields.io/badge/release-v1.2.0-0b8a42" alt="v1.2.0"></a>
   <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go 1.26+"></a>
   <a href="https://github.com/farshidmousavii/sentrydns/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"></a>
 </p>
@@ -544,8 +544,8 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 **Option 1 — Download release tarball (faster):**
 
 ```bash
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz
-tar xzf sentrydns-v1.1.0.tar.gz
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.2.0/sentrydns-v1.2.0.tar.gz
+tar xzf sentrydns-v1.2.0.tar.gz
 sudo bash install.sh
 ```
 
@@ -727,8 +727,8 @@ Each release includes:
 
 ```bash
 # Download and install latest release
-wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.1.0/sentrydns-v1.1.0.tar.gz
-tar xzf sentrydns-v1.1.0.tar.gz
+wget https://github.com/farshidmousavii/sentrydns/releases/download/v1.2.0/sentrydns-v1.2.0.tar.gz
+tar xzf sentrydns-v1.2.0.tar.gz
 sudo bash install.sh
 ```
 

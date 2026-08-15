@@ -77,6 +77,15 @@ global_dns: "8.8.8.8"
 	if cfg.StateFile != "data/.sentrydns-state" {
 		t.Errorf("StateFile = %q, want %q", cfg.StateFile, "data/.sentrydns-state")
 	}
+	if cfg.RateLimitPerClient != 0 {
+		t.Errorf("RateLimitPerClient = %d, want 0", cfg.RateLimitPerClient)
+	}
+	if cfg.GlobalQPSLimit != 0 {
+		t.Errorf("GlobalQPSLimit = %d, want 0", cfg.GlobalQPSLimit)
+	}
+	if !cfg.LoopDetection {
+		t.Error("LoopDetection = false, want true")
+	}
 }
 
 func TestLoadPartialConfig(t *testing.T) {
@@ -205,6 +214,39 @@ max_ttl: 300
 	_, err := Load(path)
 	if err == nil {
 		t.Error("expected validation error for min_ttl > max_ttl")
+	}
+}
+
+func TestLoadRateLimitOptions(t *testing.T) {
+	yaml := `
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
+global_qps_limit: 5000
+loop_detection: false
+`
+	path := writeConfig(t, yaml)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GlobalQPSLimit != 5000 {
+		t.Errorf("GlobalQPSLimit = %d, want 5000", cfg.GlobalQPSLimit)
+	}
+	if cfg.LoopDetection {
+		t.Error("LoopDetection = true, want false")
+	}
+}
+
+func TestValidateNegativeGlobalQPSLimit(t *testing.T) {
+	yaml := `
+iran_dns: "10.0.0.1"
+global_dns: "8.8.8.8"
+global_qps_limit: -1
+`
+	path := writeConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected validation error for negative global_qps_limit")
 	}
 }
 

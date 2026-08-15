@@ -38,6 +38,8 @@ type Config struct {
 	CleanupSchedule          string   `yaml:"cleanup_schedule"`
 	CacheMaxEntries          int      `yaml:"cache_max_entries"`
 	RateLimitPerClient       int      `yaml:"rate_limit_per_client"`
+	GlobalQPSLimit           int      `yaml:"global_qps_limit"`
+	LoopDetection            bool     `yaml:"loop_detection"`
 	IranCBThreshold          int      `yaml:"iran_cb_threshold"`
 	IranCBCooldown           string   `yaml:"iran_cb_cooldown"`
 	GlobalCBThreshold        int      `yaml:"global_cb_threshold"`
@@ -70,6 +72,8 @@ func defaultConfig() Config {
 		CleanupSchedule:          "02:00",
 		CacheMaxEntries:          100000,
 		RateLimitPerClient:       0,
+		GlobalQPSLimit:           0,
+		LoopDetection:            true,
 		IranCBThreshold:          5,
 		IranCBCooldown:           "30s",
 		GlobalCBThreshold:        5,
@@ -128,6 +132,9 @@ func (c *Config) Validate() error {
 	}
 	if c.CleanupInitialDelay == "" {
 		return errors.New("cleanup_initial_delay is required")
+	}
+	if c.GlobalQPSLimit < 0 {
+		return errors.New("global_qps_limit must not be negative")
 	}
 	if c.GlobalDNSTimeout <= 0 {
 		return errors.New("global_dns_timeout must be positive")

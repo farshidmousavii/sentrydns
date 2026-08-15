@@ -25,6 +25,8 @@
 #   SENTRY_IRAN_LATENCY_MS    2000
 #   SENTRY_GLOBAL_LATENCY_MS  2000
 #   SENTRY_UPSTREAM_DEAD_SEC  120
+#   SENTRY_LOOP_MIN           1   (queries refused by loop detection per window)
+#   SENTRY_GLOBAL_LIMITED_MIN 1   (queries denied by global QPS cap per window)
 set -euo pipefail
 
 # ---- defaults ----
@@ -40,7 +42,9 @@ SERVFAIL_RATE="${SENTRY_SERVFAIL_RATE:-10}"
 IRAN_LATENCY_MS="${SENTRY_IRAN_LATENCY_MS:-2000}"
 GLOBAL_LATENCY_MS="${SENTRY_GLOBAL_LATENCY_MS:-2000}"
 UPSTREAM_DEAD_SEC="${SENTRY_UPSTREAM_DEAD_SEC:-120}"
-VERSION="1.0.0"
+LOOP_MIN="${SENTRY_LOOP_MIN:-1}"
+GLOBAL_LIMITED_MIN="${SENTRY_GLOBAL_LIMITED_MIN:-1}"
+VERSION="1.1.0"
 
 # ---- helpers ----
 log_entry() {
@@ -110,6 +114,8 @@ Thresholds (override via env):
   SENTRY_IRAN_LATENCY_MS     (default 2000)
   SENTRY_GLOBAL_LATENCY_MS   (default 2000)
   SENTRY_UPSTREAM_DEAD_SEC   (default 120)
+  SENTRY_LOOP_MIN            (default 1)
+  SENTRY_GLOBAL_LIMITED_MIN  (default 1)
 EOF
         exit 0
         ;;
@@ -146,7 +152,7 @@ trap cleanup SIGINT SIGTERM SIGHUP
 log_entry "info" "started (interval=${INTERVAL}s, window=${WINDOW}s, pid=$$)"
 
 # rolling window buffer: pipe-separated cumulative counters
-# format: timestamp|queries_iran|iran_timeouts|queries_global|global_timeouts|queries_servfail|queries_total|queries_cached|global_fallback_count|store_cleaned|learned_total|in_flight|iran_avg_lat_ms|global_avg_lat_ms
+# format: timestamp|queries_iran|iran_timeouts|queries_global|global_timeouts|queries_servfail|queries_total|queries_cached|global_fallback_count|store_cleaned|learned_total|in_flight|iran_avg_lat_ms|global_avg_lat_ms|loop_detections|queries_global_limited
 declare -a SAMPLES=()
 LAST_UPSTREAM_OK=$(date +%s)
 
@@ -169,10 +175,12 @@ while true; do
     inflight=$(get_field "$data" in_flight_queries)
     iran_avg_lat=$(get_field "$data" iran_avg_latency_ms)
     global_avg_lat=$(get_field "$data" global_avg_latency_ms)
+    loops=$(get_field "$data" loop_detections)
+    global_limited=$(get_field "$data" queries_global_limited)
     uptime=$(get_field "$data" uptime)
 
     now=$(date +%s)
-    SAMPLES+=("$now|${iran_q:-0}|${iran_t:-0}|${global_q:-0}|${global_t:-0}|${servfail:-0}|${total:-0}|${cached:-0}|${global_fb:-0}|${cleaned:-0}|${learned:-0}|${inflight:-0}|${iran_avg_lat:-0}|${global_avg_lat:-0}")
+    SAMPLES+=("$now|${iran_q:-0}|${iran_t:-0}|${global_q:-0}|${global_t:-0}|${servfail:-0}|${total:-0}|${cached:-0}|${global_fb:-0}|${cleaned:-0}|${learned:-0}|${inflight:-0}|${iran_avg_lat:-0}|${global_avg_lat:-0}|${loops:-0}|${global_limited:-0}")
 
     # prune samples outside window
     cutoff=$((now - WINDOW))
@@ -192,8 +200,8 @@ while true; do
     first="${SAMPLES[0]}"
     last="${SAMPLES[-1]}"
 
-    IFS='|' read -r _ iran_q0 iran_t0 gq0 gt0 sf0 tot0 cached0 gfb0 cl0 lrn0 _ il0 gl0 <<< "$first"
-    IFS='|' read -r _ iran_q1 iran_t1 gq1 gt1 sf1 tot1 cached1 gfb1 cl1 lrn1 if1 il1 gl1 <<< "$last"
+    IFS='|' read -r _ iran_q0 iran_t0 gq0 gt0 sf0 tot0 cached0 gfb0 cl0 lrn0 _ il0 gl0 ld0 ql0 <<< "$first"
+    IFS='|' read -r _ iran_q1 iran_t1 gq1 gt1 sf1 tot1 cached1 gfb1 cl1 lrn1 if1 il1 gl1 ld1 ql1 <<< "$last"
 
     d_iran_q=$((iran_q1 - iran_q0))
     d_iran_t=$((iran_t1 - iran_t0))
@@ -205,6 +213,8 @@ while true; do
     d_global_fb=$((gfb1 - gfb0))
     d_cleaned=$((cl1 - cl0))
     d_learned=$((lrn1 - lrn0))
+    d_loops=$((ld1 - ld0))
+    d_global_limited=$((ql1 - ql0))
 
     # snapshot values from latest sample
     d_inflight=$if1
@@ -244,6 +254,12 @@ while true; do
     upstream_dead=$((now - LAST_UPSTREAM_OK))
     if [ "$upstream_dead" -gt "$UPSTREAM_DEAD_SEC" ]; then
         ALERTS+=("UPSTREAM_DEAD: ${upstream_dead}s > ${UPSTREAM_DEAD_SEC}s since last successful query")
+    fi
+    if [ "$d_loops" -gt "$LOOP_MIN" ]; then
+        ALERTS+=("LOOP_DETECTED: $d_loops queries refused from upstream sources in window")
+    fi
+    if [ "$d_global_limited" -gt "$GLOBAL_LIMITED_MIN" ]; then
+        ALERTS+=("GLOBAL_LIMIT_HIT: $d_global_limited queries denied by global QPS cap in window")
     fi
 
     # ---- build JSON output ----

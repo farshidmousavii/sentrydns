@@ -93,6 +93,24 @@ func main() {
 	limiter := ratelimit.New(cfg.RateLimitPerClient)
 	defer limiter.Stop()
 
+	globalLimiter := ratelimit.NewGlobal(cfg.GlobalQPSLimit)
+
+	// Loop protection: refuse queries arriving from our configured upstreams.
+	// Catches misconfiguration where an upstream forwards back to us.
+	var loopIPs []net.IP
+	if cfg.LoopDetection {
+		for _, s := range []string{cfg.IranDNS, cfg.GlobalDNS, cfg.GlobalDNSFallback} {
+			if ip := net.ParseIP(s); ip != nil {
+				loopIPs = append(loopIPs, ip)
+			} else if s != "" {
+				slog.Warn("loop_detection: upstream is not an IP, cannot watch", "upstream", s)
+			}
+		}
+		if len(loopIPs) > 0 {
+			slog.Info("loop detection enabled", "watched_ips", len(loopIPs))
+		}
+	}
+
 	var u *updater.Updater
 	if cfg.IranRangesURL != "" {
 		interval, err := time.ParseDuration(cfg.IranRangesUpdateInterval)
@@ -144,6 +162,32 @@ func main() {
 		if host, _, err := net.SplitHostPort(clientIP); err == nil {
 			clientIP = host
 		}
+
+		if cfg.LoopDetection {
+			looped := false
+			if cip := net.ParseIP(clientIP); cip != nil {
+				for _, lip := range loopIPs {
+					if cip.Equal(lip) {
+						looped = true
+						break
+					}
+				}
+			}
+			if looped {
+				m.LoopDetections.Add(1)
+				slog.Warn("loop detected: query from upstream", "client", clientIP, "domain", domain)
+				w.WriteMsg(new(dns.Msg).SetRcode(req, dns.RcodeRefused))
+				return
+			}
+		}
+
+		if cfg.GlobalQPSLimit > 0 && !globalLimiter.Allow() {
+			m.QueriesGlobalLimited.Add(1)
+			slog.Warn("global rate limit exceeded", "client", clientIP, "domain", domain)
+			w.WriteMsg(resolver.ServerFail(req))
+			return
+		}
+
 		if cfg.RateLimitPerClient > 0 && !limiter.Allow(clientIP) {
 			m.QueriesRateLimited.Add(1)
 			slog.Warn("rate limited", "client", clientIP, "domain", domain)

@@ -45,6 +45,20 @@ iran_cb_cooldown: 30s
 global_cb_threshold: 30
 global_cb_cooldown: 30s
 
+# Per-client rate limit in queries/second (0 = disabled).
+# Applied per source IP; behind a NAT this caps all users behind that IP.
+rate_limit_per_client: 0
+
+# Global QPS cap across ALL clients (0 = disabled).
+# Token bucket with 1s burst capacity. Protects the server and upstreams
+# from floods, forwarding loops, and runaway clients.
+global_qps_limit: 0
+
+# Loop protection: refuse (REFUSED) queries arriving from configured
+# upstream IPs (iran_dns / global_dns / global_dns_fallback). Catches
+# misconfigurations where an upstream forwards back to sentrydns.
+loop_detection: true
+
 cleanup_initial_delay: 1h
 cleanup_qps: 100
 

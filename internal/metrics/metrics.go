@@ -46,7 +46,11 @@ type Metrics struct {
 	InFlightQueries atomic.Int64
 
 	// rate limiting
-	QueriesRateLimited atomic.Int64
+	QueriesRateLimited   atomic.Int64
+	QueriesGlobalLimited atomic.Int64
+
+	// loop protection
+	LoopDetections atomic.Int64
 
 	// circuit breaker — Iran
 	IranCBSkipped atomic.Int64

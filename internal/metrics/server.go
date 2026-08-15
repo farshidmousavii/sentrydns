@@ -9,45 +9,47 @@ import (
 )
 
 type response struct {
-	Uptime            string `json:"uptime"`
-	StartTime         string `json:"start_time"`
-	QueriesTotal      int64  `json:"queries_total"`
-	QueriesIran       int64  `json:"queries_iran"`
-	QueriesGlobal     int64  `json:"queries_global"`
-	QueriesRetried    int64  `json:"queries_retried"`
-	QueriesServfail   int64  `json:"queries_servfail"`
-	QueriesCached     int64  `json:"queries_cached"`
-	CacheMiss         int64  `json:"cache_miss"`
-	CacheHitRatio     string `json:"cache_hit_ratio"`
-	LearnedTotal      int64  `json:"learned_total"`
-	LearnedToday      int64  `json:"learned_today"`
-	StoreSize         int64  `json:"store_size"`
-	StoreRemoved      int64  `json:"store_removed"`
-	StoreCleaned      int64  `json:"store_cleaned"`
-	LastUpdateTime    string `json:"last_update_time"`
-	LastUpdateSuccess bool   `json:"last_update_success"`
-	LastUpdateAgo     string `json:"last_update_ago"`
-	PathTLD           int64  `json:"path_tld"`
-	PathPreferIran    int64  `json:"path_prefer_iran"`
-	PathStore         int64  `json:"path_store"`
-	PathLearn         int64  `json:"path_learn"`
-	PathStatic        int64  `json:"path_static"`
-	IranAvgLatencyMs  int64  `json:"iran_avg_latency_ms"`
-	IranTimeouts      int64  `json:"iran_timeouts"`
-	GlobalAvgLatencyMs int64 `json:"global_avg_latency_ms"`
-	GlobalTimeouts    int64 `json:"global_timeouts"`
-	GlobalFallbackCount int64 `json:"global_fallback_count"`
-	GlobalFallbackAvgLatencyMs int64 `json:"global_fallback_avg_latency_ms"`
-	TcpFallbackCount  int64 `json:"tcp_fallback_count"`
-	InFlightQueries   int64 `json:"in_flight_queries"`
-	QueriesRateLimited int64 `json:"queries_rate_limited"`
-	IranCBSkipped     int64 `json:"iran_cb_skipped"`
-	IranCBTrips       int64 `json:"iran_cb_trips"`
-	IranCBOpen        int64 `json:"iran_cb_open"`
-	GlobalCBSkipped   int64 `json:"global_cb_skipped"`
-	GlobalCBTrips     int64 `json:"global_cb_trips"`
-	GlobalCBOpen      int64 `json:"global_cb_open"`
-	ShortWaitExpired  int64 `json:"short_wait_expired"`
+	Uptime                     string `json:"uptime"`
+	StartTime                  string `json:"start_time"`
+	QueriesTotal               int64  `json:"queries_total"`
+	QueriesIran                int64  `json:"queries_iran"`
+	QueriesGlobal              int64  `json:"queries_global"`
+	QueriesRetried             int64  `json:"queries_retried"`
+	QueriesServfail            int64  `json:"queries_servfail"`
+	QueriesCached              int64  `json:"queries_cached"`
+	CacheMiss                  int64  `json:"cache_miss"`
+	CacheHitRatio              string `json:"cache_hit_ratio"`
+	LearnedTotal               int64  `json:"learned_total"`
+	LearnedToday               int64  `json:"learned_today"`
+	StoreSize                  int64  `json:"store_size"`
+	StoreRemoved               int64  `json:"store_removed"`
+	StoreCleaned               int64  `json:"store_cleaned"`
+	LastUpdateTime             string `json:"last_update_time"`
+	LastUpdateSuccess          bool   `json:"last_update_success"`
+	LastUpdateAgo              string `json:"last_update_ago"`
+	PathTLD                    int64  `json:"path_tld"`
+	PathPreferIran             int64  `json:"path_prefer_iran"`
+	PathStore                  int64  `json:"path_store"`
+	PathLearn                  int64  `json:"path_learn"`
+	PathStatic                 int64  `json:"path_static"`
+	IranAvgLatencyMs           int64  `json:"iran_avg_latency_ms"`
+	IranTimeouts               int64  `json:"iran_timeouts"`
+	GlobalAvgLatencyMs         int64  `json:"global_avg_latency_ms"`
+	GlobalTimeouts             int64  `json:"global_timeouts"`
+	GlobalFallbackCount        int64  `json:"global_fallback_count"`
+	GlobalFallbackAvgLatencyMs int64  `json:"global_fallback_avg_latency_ms"`
+	TcpFallbackCount           int64  `json:"tcp_fallback_count"`
+	InFlightQueries            int64  `json:"in_flight_queries"`
+	QueriesRateLimited         int64  `json:"queries_rate_limited"`
+	QueriesGlobalLimited       int64  `json:"queries_global_limited"`
+	LoopDetections             int64  `json:"loop_detections"`
+	IranCBSkipped              int64  `json:"iran_cb_skipped"`
+	IranCBTrips                int64  `json:"iran_cb_trips"`
+	IranCBOpen                 int64  `json:"iran_cb_open"`
+	GlobalCBSkipped            int64  `json:"global_cb_skipped"`
+	GlobalCBTrips              int64  `json:"global_cb_trips"`
+	GlobalCBOpen               int64  `json:"global_cb_open"`
+	ShortWaitExpired           int64  `json:"short_wait_expired"`
 }
 
 func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
@@ -81,46 +83,48 @@ func (m *Metrics) MetricsHandler(storeSize func() int64) http.HandlerFunc {
 		}
 
 		resp := response{
-			Uptime:            m.Uptime(),
-			StartTime:         m.startTime.Format("2006-01-02 15:04:05"),
-			QueriesTotal:      total,
-			QueriesIran:       m.QueriesIran.Load(),
-			QueriesGlobal:     m.QueriesGlobal.Load(),
-			QueriesRetried:    m.QueriesRetried.Load(),
-			QueriesServfail:   m.QueriesServfail.Load(),
-			QueriesCached:     cached,
-			CacheMiss:         m.CacheMiss.Load(),
-			CacheHitRatio:     hitRatio,
-			LearnedTotal:      m.LearnedTotal.Load(),
-			LearnedToday:      m.LearnedTodayValue(),
-			StoreSize:         storeSize(),
-			StoreRemoved:      m.StoreRemoved.Load(),
-			StoreCleaned:      m.StoreCleaned.Load(),
-			LastUpdateTime:    lastUpdate,
-			LastUpdateSuccess: m.LastUpdateSuccess.Load(),
-			LastUpdateAgo:     lastUpdateAgo,
-			PathTLD:           m.PathTLD.Load(),
-			PathPreferIran:    m.PathPreferIran.Load(),
-			PathStore:         m.PathStore.Load(),
-			PathLearn:         m.PathLearn.Load(),
-			PathStatic:        m.PathStatic.Load(),
-			IranAvgLatencyMs:  iranAvg,
-			IranTimeouts:      m.IranTimeouts.Load(),
-			GlobalAvgLatencyMs: globalAvg,
-			GlobalTimeouts:    m.GlobalTimeouts.Load(),
-			GlobalFallbackCount: m.GlobalFallbackCount.Load(),
+			Uptime:                     m.Uptime(),
+			StartTime:                  m.startTime.Format("2006-01-02 15:04:05"),
+			QueriesTotal:               total,
+			QueriesIran:                m.QueriesIran.Load(),
+			QueriesGlobal:              m.QueriesGlobal.Load(),
+			QueriesRetried:             m.QueriesRetried.Load(),
+			QueriesServfail:            m.QueriesServfail.Load(),
+			QueriesCached:              cached,
+			CacheMiss:                  m.CacheMiss.Load(),
+			CacheHitRatio:              hitRatio,
+			LearnedTotal:               m.LearnedTotal.Load(),
+			LearnedToday:               m.LearnedTodayValue(),
+			StoreSize:                  storeSize(),
+			StoreRemoved:               m.StoreRemoved.Load(),
+			StoreCleaned:               m.StoreCleaned.Load(),
+			LastUpdateTime:             lastUpdate,
+			LastUpdateSuccess:          m.LastUpdateSuccess.Load(),
+			LastUpdateAgo:              lastUpdateAgo,
+			PathTLD:                    m.PathTLD.Load(),
+			PathPreferIran:             m.PathPreferIran.Load(),
+			PathStore:                  m.PathStore.Load(),
+			PathLearn:                  m.PathLearn.Load(),
+			PathStatic:                 m.PathStatic.Load(),
+			IranAvgLatencyMs:           iranAvg,
+			IranTimeouts:               m.IranTimeouts.Load(),
+			GlobalAvgLatencyMs:         globalAvg,
+			GlobalTimeouts:             m.GlobalTimeouts.Load(),
+			GlobalFallbackCount:        m.GlobalFallbackCount.Load(),
 			GlobalFallbackAvgLatencyMs: globalFallbackAvg,
-			TcpFallbackCount:  m.TcpFallbackCount.Load(),
-		InFlightQueries:   m.InFlightQueries.Load(),
-		QueriesRateLimited: m.QueriesRateLimited.Load(),
-		IranCBSkipped:     m.IranCBSkipped.Load(),
-		IranCBTrips:       m.IranCBTrips.Load(),
-		IranCBOpen:        m.IranCBOpen.Load(),
-		GlobalCBSkipped:   m.GlobalCBSkipped.Load(),
-		GlobalCBTrips:     m.GlobalCBTrips.Load(),
-		GlobalCBOpen:      m.GlobalCBOpen.Load(),
-		ShortWaitExpired:  m.ShortWaitExpired.Load(),
-	}
+			TcpFallbackCount:           m.TcpFallbackCount.Load(),
+			InFlightQueries:            m.InFlightQueries.Load(),
+			QueriesRateLimited:         m.QueriesRateLimited.Load(),
+			QueriesGlobalLimited:       m.QueriesGlobalLimited.Load(),
+			LoopDetections:             m.LoopDetections.Load(),
+			IranCBSkipped:              m.IranCBSkipped.Load(),
+			IranCBTrips:                m.IranCBTrips.Load(),
+			IranCBOpen:                 m.IranCBOpen.Load(),
+			GlobalCBSkipped:            m.GlobalCBSkipped.Load(),
+			GlobalCBTrips:              m.GlobalCBTrips.Load(),
+			GlobalCBOpen:               m.GlobalCBOpen.Load(),
+			ShortWaitExpired:           m.ShortWaitExpired.Load(),
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -142,6 +146,7 @@ func (m *Metrics) HealthHandler(w http.ResponseWriter, r *http.Request) {
 func (m *Metrics) StartServer(addr string, storeSize func() int64) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", m.MetricsHandler(storeSize))
+	mux.HandleFunc("/metrics/prom", m.PrometheusHandler(storeSize))
 	mux.HandleFunc("/health", m.HealthHandler)
 
 	srv := &http.Server{

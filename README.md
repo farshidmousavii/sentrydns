@@ -154,6 +154,9 @@ SentryDNS در محیطی کار می‌کند که پاسخ DNS لزوماً ق
 - ✅ حذف کوئری‌های تکراری با Singleflight
 - ✅ مدارشکن مجزا برای ایرانDNS و GlobalDNS با قابلیت تنظیم threshold
 - ✅ مشاهده‌پذیری shortWait (شمارنده `short_wait_expired`)
+- ✅ محدودیت نرخ به ازای هر کلاینت (`rate_limit_per_client`، قابل فعال/غیرفعال‌سازی از config)
+- ✅ سقف QPS سراسری (`global_qps_limit`) — محافظ token bucket در برابر سیل و حلقه
+- ✅ تشخیص حلقه (`loop_detection`) — رد کوئری‌هایی که از سرورهای بالادستی می‌آیند
 
 ---
 
@@ -276,6 +279,9 @@ https://github.com/bootmortis/iran-hosted-domains
 | `iran_cb_cooldown`            | مدت زمان قبل از half-open probe ایران (پیش‌فرض: ۳۰s) |
 | `global_cb_threshold`         | تعداد خطاهای متوالی برای باز کردن مدار Global |
 | `global_cb_cooldown`          | مدت زمان قبل از half-open probe Global (پیش‌فرض: ۳۰s) |
+| `rate_limit_per_client`       | سقف QPS به ازای هر کلاینت (۰ = غیرفعال). پشت NAT این سقف برای همه کاربران پشت یک IP اعمال می‌شود |
+| `global_qps_limit`            | سقف QPS سراسری همه کلاینت‌ها، token bucket با ظرفیت ۱ ثانیه (۰ = غیرفعال) |
+| `loop_detection`              | رد کوئری‌هایی که از سرورهای بالادستی می‌آیند (REFUSED) برای شکستن حلقه‌های فوروارد (پیش‌فرض: true) |
 
 ### رکوردهای استاتیک
 
@@ -314,6 +320,36 @@ sudo journalctl -u sentrydns -f
 ```
 
 </div>
+
+---
+
+## مانیتورینگ
+
+سه اندپوینت روی `metrics_addr` (پیش‌فرض `:9153`):
+
+| اندپوینت          | فرمت                | کاربرد                                     |
+| ----------------- | ------------------- | ------------------------------------------ |
+| `/metrics`        | JSON                | اسنپ‌شات مناسب انسان/اسکریپت (`sentrydps.sh` از همین پول می‌کند) |
+| `/metrics/prom`   | متن Prometheus (0.0.4) | هدف اسکرپ برای Prometheus/Grafana     |
+| `/health`         | JSON                | بررسی زنده بودن                             |
+
+```bash
+curl -s http://localhost:9153/metrics      # اسنپ‌شات JSON
+curl -s http://localhost:9153/metrics/prom # فرمت Prometheus
+curl -s http://localhost:9153/health
+```
+
+نمونه تنظیمات scrape در Prometheus:
+
+```yaml
+scrape_configs:
+  - job_name: sentrydns
+    static_configs:
+      - targets: ["172.16.0.41:9153"]
+    metrics_path: /metrics/prom
+```
+
+همه شمارنده‌ها تجمعی هستند (پسوند `_total`)؛ تأخیرها به ثانیه به‌صورت gauge و `cache_hit_ratio` کسر ۰ تا ۱ است. پروب `sentrydps` علاوه بر این، روی نقض آستانه‌ها هشدار می‌دهد (timeoutها، نرخ servfail، inflight، تأخیر، تشخیص حلقه، برخورد با سقف QPS سراسری).
 
 ---
 
@@ -489,6 +525,9 @@ SentryDNS operates in an environment where DNS responses are not necessarily tru
 - ✅ Independent circuit breakers for IranDNS and GlobalDNS (configurable threshold/cooldown)
 - ✅ shortWait observability (`short_wait_expired` counter)
 - ✅ Static A records (`static_records` config) answered directly, bypassing upstreams
+- ✅ Per-client rate limiting (`rate_limit_per_client`, config-gated)
+- ✅ Global QPS cap (`global_qps_limit`) — token-bucket protection against floods/loops
+- ✅ Loop detection (`loop_detection`) — refuses queries arriving from configured upstreams
 
 ---
 
@@ -595,6 +634,9 @@ Edit `config.yaml` to match your environment. A full example is at `config.examp
 | `iran_cb_cooldown`            | IranCB duration before half-open probe  |
 | `global_cb_threshold`         | GlobalCB consecutive failures to trip   |
 | `global_cb_cooldown`          | GlobalCB duration before half-open probe|
+| `rate_limit_per_client`       | Per-client QPS cap (0 = disabled). Behind NAT this caps all users behind one IP |
+| `global_qps_limit`            | Global QPS cap across all clients, token bucket w/ 1s burst (0 = disabled) |
+| `loop_detection`              | Refuse (REFUSED) queries arriving from configured upstreams to break forwarding loops (default: true) |
 
 ### Static Records
 
@@ -629,6 +671,36 @@ sudo systemctl stop sentrydns
 sudo systemctl status sentrydns
 sudo journalctl -u sentrydns -f
 ```
+
+---
+
+## Monitoring
+
+Three endpoints on `metrics_addr` (default `:9153`):
+
+| Endpoint          | Format            | Purpose                                    |
+| ----------------- | ----------------- | ------------------------------------------ |
+| `/metrics`        | JSON              | Human/script-friendly snapshot (`sentrydps.sh` polls this) |
+| `/metrics/prom`   | Prometheus text (0.0.4) | Scrape target for Prometheus/Grafana  |
+| `/health`         | JSON              | Liveness probe                             |
+
+```bash
+curl -s http://localhost:9153/metrics      # JSON snapshot
+curl -s http://localhost:9153/metrics/prom # Prometheus format
+curl -s http://localhost:9153/health
+```
+
+Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: sentrydns
+    static_configs:
+      - targets: ["172.16.0.41:9153"]
+    metrics_path: /metrics/prom
+```
+
+All counters are cumulative (`_total` suffix); latencies are gauges in seconds; `cache_hit_ratio` is a 0-1 fraction. The `sentrydps` probe additionally raises alerts on threshold breaches (timeouts, servfail rate, inflight, latency, loop detections, global QPS cap hits).
 
 ---
 

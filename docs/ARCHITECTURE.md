@@ -60,7 +60,7 @@ SentryDNS یک پروکسی تطبیقی DNS است که به طور خودکا�
 | `internal/updater`      | به‌روزرسانی خودکار رنج‌های IP ایران                      |
 | `internal/metrics`      | شمارنده‌های اتمیک، ریست روزانه، HTTP Endpoint            |
 | `internal/state`        | persistence اتمیک JSON برای metadata                     |
-| `internal/ratelimit`    | محدودکننده نرخ به ازای هر کلاینت                         |
+| `internal/ratelimit`    | محدودکننده نرخ به ازای هر کلاینت + سقف QPS سراسری (token bucket) |
 | `internal/logger`       | لاگ JSON/text ساختاریافته                                |
 
 ---
@@ -73,11 +73,13 @@ SentryDNS یک پروکسی تطبیقی DNS است که به طور خودکا�
 dns.HandleFunc(".", func(w dns.ResponseWriter, req *dns.Msg) {
     // ۱. بازیابی از panic
     // ۲. بررسی سوال خالی → SERVFAIL
-    // ۳. rate limit → SERVFAIL
-    // ۴. context.WithTimeout 10s
-    // ۵. r.Resolve(ctx, req)
-    // ۶. nil → SERVFAIL
-    // ۷. w.WriteMsg(resp)
+    // ۳. loop detection: اگر منبع کوئری یکی از بالادستی‌ها باشد → REFUSED
+    // ۴. سقف QPS سراسری (global_qps_limit) → SERVFAIL
+    // ۵. rate limit به ازای هر کلاینت → SERVFAIL
+    // ۶. context.WithTimeout 10s
+    // ۷. r.Resolve(ctx, req)
+    // ۸. nil → SERVFAIL
+    // ۹. w.WriteMsg(resp)
 })
 ```
 
@@ -267,6 +269,7 @@ type Resolver struct {
 - `resetDailyStats()`: در نیمه‌شب LearnedTotalAtMidnight را ذخیره می‌کند
 - `RestoreFromFile()`: بازیابی از state file در startup
 - `Stop()`: با `sync.Once` (رفع race condition در نسخه قبلی)
+- دو اندپوینت: `/metrics` (JSON — سازگار با sentrydps.sh) و `/metrics/prom` (فرمت متن Prometheus 0.0.4 برای اسکرپ توسط Prometheus/Grafana)
 
 ### State (internal/state/state.go)
 
@@ -279,6 +282,21 @@ type Resolver struct {
 - ۱۶ shard برای دسترسی همزمان
 - sliding window ۱ ثانیه‌ای به ازای هر کلاینت IP
 - پاکسازی هر ۱ دقیقه
+
+### Global Limiter (internal/ratelimit/global.go)
+
+- token bucket سراسری واحد (بدون shard، یک mutex)
+- ظرفیت = سقف QPS (اجازه burst ۱ ثانیه‌ای)
+- `global_qps_limit = 0` → غیرفعال (Allow همیشه true)
+- در handler پیش از resolve اعمال می‌شود؛ شامل همه کوئری‌ها حتی cache hit
+
+### Loop Detection (main.go, handler)
+
+- اگر `loop_detection: true` و IP مبدأ کوئری برابر یکی از بالادستی‌ها باشد
+  (iran_dns / global_dns / global_dns_fallback) → پاسخ REFUSED
+- فقط IPهای بالادستیِ معتبر (قابل ParseIP) رصد می‌شوند
+- جلوگیری از حلقه فوروارد: کلاینت → SentryDNS → بالادستی → SentryDNS → …
+- متریک: `loop_detections`
 
 ---
 
@@ -1227,9 +1245,12 @@ tail -f /var/log/sentrydns/sentrydns.log       # Log file
 ### Metrics
 
 ```bash
-curl -s http://172.16.0.41:9153/metrics | jq
+curl -s http://172.16.0.41:9153/metrics | jq          # JSON snapshot
+curl -s http://172.16.0.41:9153/metrics/prom          # Prometheus text format
 curl -s http://172.16.0.41:9153/health
 ```
+
+Prometheus: `metrics_path: /metrics/prom` — همه counters با پسوند `_total`، تأخیرها به ثانیه (gauge)، `cache_hit_ratio` کسر ۰ تا ۱.
 
 ### DNS Diagnostics
 
